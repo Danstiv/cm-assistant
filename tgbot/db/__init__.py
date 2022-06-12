@@ -1,11 +1,19 @@
+import os
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 
 
-async def init_db(controller):
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///db.sqlite3",
-    )
-    controller.db_engine = engine
-    async_session = AsyncSession(engine, expire_on_commit=False)
-    controller.db = async_session
+class DB:
+
+    async def init_db(self):
+        engine = create_async_engine(
+            os.environ['DB_URL'],
+        )
+        self.db_engine = engine
+        async_session = AsyncSession(engine, expire_on_commit=False)
+        self.db = async_session
+
+    async def close_db(self):
+        await self.db.close()
+        await self.db_engine.dispose()

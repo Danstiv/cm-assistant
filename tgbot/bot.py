@@ -30,7 +30,10 @@ LOG_MAX_SIZE = 10*2**20  # 10MB
 LOG_MAX_BACKUPS = 9
 
 
-class BotController(KeyboardHandler):
+class BotController(
+    KeyboardHandler,
+    db.DB,
+):
     def __init__(self, bot_name, api_id=None, api_hash=None, use_uvloop=False):
         self.api_id = api_id or os.environ['API_ID']
         self.api_hash = api_hash or os.environ['API_HASH']
@@ -138,7 +141,7 @@ class BotController(KeyboardHandler):
             decorator = decorator(*handler['handler_args'], **handler['handler_kwargs'])
             method = getattr(self, handler['handler_name'])
             decorator(method)
-        await db.init_db(self)
+        await self.init_db()
 
     async def start(self):
         try:
@@ -162,8 +165,7 @@ class BotController(KeyboardHandler):
             print('\r', end='')  # To remove C character from terminal
             self.log.info('Выход')
             await self.app.stop()
-            await self.db.close()
-            await self.db_engine.dispose()
+            await self.close_db()
 
     def stop_from_signal(self, *args, **kwargs):
         self.stop()
