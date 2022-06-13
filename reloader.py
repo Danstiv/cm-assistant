@@ -2,7 +2,7 @@ import asyncio
 from importlib import reload
 import sys
 
-import cm_assistent
+import cm_assistant
 import tgbot
 
 
@@ -16,6 +16,6 @@ def reload_bot(controller):
     if controller:
         controller.stop()
         controller.log.handlers = []
-    controller = d2d_bot.Controller()
+    controller = cm_assistant.Controller()
     asyncio.create_task(controller.start())
     return controller
