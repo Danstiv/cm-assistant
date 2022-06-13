@@ -1,2 +1,3 @@
+dotenv==0.20.0
 pyrogram==2.0.26
 sqlalchemy==1.4.37

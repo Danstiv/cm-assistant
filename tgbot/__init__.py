@@ -1,1 +1,1 @@
-from .bot import BotController
+from tgbot.bot import BotController

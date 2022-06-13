@@ -4,15 +4,14 @@ from collections import OrderedDict
 from pyrogram.enums.parse_mode import ParseMode
 from pyrogram.utils import get_peer_type
 
-from . import split_text
-from .limiter import Limiter
-from .prioritized_item import PrioritizedItem
+from tgbot import split_text
+from tgbot.limiter import Limiter
+from tgbot.prioritized_item import PrioritizedItem
 
 
 class MessageHandler:
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self):
         self.message_queue = asyncio.PriorityQueue()
         self.message_id = 1
         self.global_message_limiter = Limiter(
@@ -26,6 +25,7 @@ class MessageHandler:
         self.messages_info = OrderedDict()
         for priority in range(1, 4):
             self.messages_info[priority] = {'pending': 0, 'processing': 0}
+        super().__init__()
 
     def get_default_chat_id(self):
         pass

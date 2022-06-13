@@ -3,8 +3,9 @@ import uuid
 
 import pyrogram
 from sqlalchemy import select
-from .db.tables import Button
-from .handler_decorators import on_callback_query
+
+from tgbot.db.tables import Button
+from tgbot.handler_decorators import on_callback_query
 
 
 class KeyboardHandler:
@@ -49,6 +50,3 @@ class KeyboardHandler:
             return
         await callback_query.answer()
         await getattr(self, db_button.callback_name)(callback_query, db_button)
-
-    async def test_buttons(self, *args):
-        await self.send_message('Working!')

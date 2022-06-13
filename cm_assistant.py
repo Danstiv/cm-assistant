@@ -10,7 +10,10 @@ from tgbot.handler_decorators import on_message
 class Controller(BotController):
     def __init__(self):
         super().__init__(bot_name='cm_assistant')
-        self.chat_id = int(os.environ['CHAT_ID'])
+        try:
+            self.chat_id = int(os.environ['CHAT_ID'])
+        except (KeyError, ValueError):
+            raise RuntimeError('chat id not specified or invalid')
 
     def get_global_filter(self):
         return filters.text & filters.chat(self.chat_id)
