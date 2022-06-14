@@ -21,6 +21,8 @@ def make_handler_decorator(decorator_name):
             async def wrapper(self, client, *args, **kwargs):
                 try:
                     return await func(self, *args, **kwargs)
+                except (pyrogram.ContinuePropagation, pyrogram.StopPropagation):
+                    raise
                 except Exception:
                     self.log.exception(f'В обработчике {handler_name} произошло необработанное исключение:')
             handler_info = {
