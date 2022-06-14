@@ -31,10 +31,11 @@ class BotController(
 ):
 
     def __init__(self, bot_name, use_uvloop=False):
-        for var in ['api_id', 'api_hash', 'db_url']:
+        for var in ['api_id', 'api_hash', 'db_url', 'dev_ids']:
             setattr(self, var, os.getenv(var.upper()))
             if not getattr(self, var):
                 raise RuntimeError(f'"{var.upper()}" environment variable not specified')
+        self.dev_ids = [int(i) for i in self.dev_ids.split(',')]
         self.bot_name = bot_name
         self.app = None
         if sys.platform != 'win32' and use_uvloop:

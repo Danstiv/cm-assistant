@@ -89,13 +89,15 @@ class MessageHandler:
             return event.message
 
     def send_warning_error_message_sync(self, *args, **kwargs):
-        self.send_message_sync(
-            *args,
-            priority=1,
-            ignore_errors=True,
-            parse_mode=ParseMode.DISABLED,
-            **kwargs,
-        )
+        for dev_id in self.dev_ids:
+            self.send_message_sync(
+                *args,
+                chat_id=dev_id,
+                priority=1,
+                ignore_errors=True,
+                parse_mode=ParseMode.DISABLED,
+                **kwargs,
+            )
 
     async def message_sender(self, max_concurrent_sendings_per_priority):
         def could_get_next_item():
