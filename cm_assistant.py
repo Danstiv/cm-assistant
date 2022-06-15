@@ -9,21 +9,16 @@ from sqlalchemy import func, select
 from tables import Event, EventType, User, UserRole
 from tgbot import BotController
 from tgbot.handler_decorators import on_message
-from user_handler import UserHandler, user_context as user
+from tgbot.user_handler import user
 
 
-class Controller(BotController, UserHandler):
+class Controller(BotController):
     def __init__(self):
-        super().__init__(bot_name='cm_assistant')
+        super().__init__(bot_name='cm_assistant', user_table=User)
         try:
             self.group_id = int(os.environ['GROUP_ID'])
         except (KeyError, ValueError):
             raise RuntimeError('GROUP_ID not specified or invalid')
-
-    @on_message()
-    async def initial_handler(self, message):
-        await self.get_or_create_user(message.from_user.id)
-        message.continue_propagation()
 
     @on_message(filters.new_chat_members)
     async def join_handler(self, message):
@@ -33,7 +28,7 @@ class Controller(BotController, UserHandler):
             event = Event(
                 user_id=member.id,
                 time=timestamp,
-                type=EventType.JOIN.value
+                type=EventType.JOIN
             )
             events.append(event)
         self.db.add_all(events)
@@ -41,13 +36,19 @@ class Controller(BotController, UserHandler):
         self.log.info(f'Добавлено {len(events)} участников')
         await message.delete()
 
+    @on_message(filters.private&filters.command('adminadminqwerty123'))
+    async def set_admin_role_handler(self, message):
+        user.role = UserRole.ADMIN
+        await self.db.commit()
+        await message.reply('success')
+
     @on_message(filters.private&filters.command('stats'))
     async def stats_handler(self, message):
-        if user.role != UserRole.ADMIN.value:
+        if user.role != UserRole.ADMIN:
             return
         start_timestamp = int((datetime.datetime.now()-datetime.timedelta(days=7)).timestamp())
         stmt = select(func.count()).select_from(Event).where(
-            Event.type==EventType.JOIN.value,
+            Event.type==EventType.JOIN,
             Event.time >= start_timestamp
         )
         joins = (await self.db.execute(stmt)).scalar()

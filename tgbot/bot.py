@@ -19,18 +19,20 @@ from tgbot.core import Core
 from tgbot.handler_decorators import get_handlers
 from tgbot.keyboard_handler import KeyboardHandler
 from tgbot.message_handler import MessageHandler
+from tgbot.user_handler import UserHandler
 
 dotenv.load_dotenv()
 
 
 class BotController(
     Core,
-    MessageHandler,
-    KeyboardHandler,
     db.DB,
+    KeyboardHandler,
+    MessageHandler,
+    UserHandler,
 ):
 
-    def __init__(self, bot_name, use_uvloop=False):
+    def __init__(self, bot_name, use_uvloop=False, user_table=None):
         for var in ['api_id', 'api_hash', 'db_url', 'dev_ids']:
             setattr(self, var, os.getenv(var.upper()))
             if not getattr(self, var):
@@ -43,6 +45,7 @@ class BotController(
                 self.log.warning('uvloop не установлен')
             else:
                 uvloop.install()
+        self.User = user_table or tables.User
         super().__init__()
 
     def get_global_filter(self):

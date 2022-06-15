@@ -1,21 +1,25 @@
-from contextvars import ContextVar, Token
+from contextvars import ContextVar
 
 from sqlalchemy import select
 
-from tables import User
-
+from tgbot.handler_decorators import on_message
 
 user_storage = ContextVar('tg_user')
 
 class UserHandler:
 
+    @on_message()
+    async def initial_handler(self, message):
+        await self.get_or_create_user(message.from_user.id)
+        message.continue_propagation()
+
     async def get_or_create_user(self, user_id):
-        stmt = select(User).where(
-            User.user_id == user_id
+        stmt = select(self.User).where(
+            self.User.user_id == user_id
         )
         user = (await self.db.execute(stmt)).scalar()
         if not user:
-            user = User(user_id=user_id)
+            user = self.User(user_id=user_id)
             self.db.add(user)
             await self.db.commit()
             self.log.info(f'Создан пользователь {user_id}')
@@ -41,4 +45,4 @@ class UserContext:
         return setattr(self.get(), name, value)
 
 
-user_context = UserContext()
+user_context = user = UserContext()
