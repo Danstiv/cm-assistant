@@ -1,10 +1,12 @@
 import asyncio
+import datetime
 import os
 import time
 
 from pyrogram import filters
+from sqlalchemy import func, select
 
-from tables import Event, EventType, UserRole
+from tables import Event, EventType, User, UserRole
 from tgbot import BotController
 from tgbot.handler_decorators import on_message
 from user_handler import UserHandler, user_context as user
@@ -43,7 +45,25 @@ class Controller(BotController, UserHandler):
     async def stats_handler(self, message):
         if user.role != UserRole.ADMIN.value:
             return
-        await message.reply('Тут будет статистика.')
+        start_timestamp = int((datetime.datetime.now()-datetime.timedelta(days=7)).timestamp())
+        stmt = select(func.count()).select_from(Event).where(
+            Event.type==EventType.JOIN.value,
+            Event.time >= start_timestamp
+        )
+        joins = (await self.db.execute(stmt)).scalar()
+        stmt = select(func.sum(User.message_count))
+        messages = (await self.db.execute(stmt)).scalar()
+        await message.reply(
+            f'Новых пользователей: {joins}\n'
+            f'Написано сообщений: {messages}'
+        )
+
+    @on_message(filters.group & ~filters.service)
+    async def group_message_handler(self, message):
+        if message.chat.id != self.group_id:
+            return
+        user.message_count += 1
+        await self.db.commit()
 
 
 if __name__ == '__main__':

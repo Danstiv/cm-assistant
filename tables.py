@@ -20,7 +20,7 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, nullable=False)
     role = Column(String, nullable=False, default=UserRole.USER.value)
-    message_count = Column(Integer)
+    message_count = Column(Integer, default=0)
 
 
 class Event(Base):
