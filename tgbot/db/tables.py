@@ -10,3 +10,9 @@ class Button(Base):
     creation_date = Column(Integer)
     callback_data = Column(String)
     callback_name = Column(String)
+
+
+class User(Base):
+    __tablename__ = 'user'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False)
