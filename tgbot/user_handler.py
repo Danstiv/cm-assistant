@@ -10,7 +10,8 @@ class UserHandler:
 
     @on_message()
     async def initial_handler(self, message):
-        await self.get_or_create_user(message.from_user.id)
+        user = await self.get_or_create_user(message.from_user.id)
+        user_storage.set(user)
         message.continue_propagation()
 
     async def get_or_create_user(self, user_id):
@@ -23,7 +24,7 @@ class UserHandler:
             self.db.add(user)
             await self.db.commit()
             self.log.info(f'Создан пользователь {user_id}')
-        user_storage.set(user)
+        return user
 
 
 class EmptyUserContextException(Exception):
