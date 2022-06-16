@@ -13,11 +13,11 @@ class UserRole(enum.Enum):
 
 class EventType(enum.Enum):
     JOIN = 'join'
+    MESSAGE = 'message'
 
 
 class User(User):
     role = Column(Enum(UserRole), nullable=False, default=UserRole.USER)
-    message_count = Column(Integer, default=0)
 
 
 class Event(Base):
@@ -26,3 +26,9 @@ class Event(Base):
     user_id = Column(Integer, nullable=False)
     time = Column(Integer, nullable=False)
     type = Column(Enum(EventType), nullable=False)
+
+
+class Group(Base):
+    __tablename__ = 'group'
+    id = Column(Integer, primary_key=True)
+    group_id = Column(Integer, nullable=False)
