@@ -45,7 +45,7 @@ class BotController(
                 self.log.warning('uvloop не установлен')
             else:
                 uvloop.install()
-        self.User = user_table or tables.User
+        self.User = user_table or db.tables.User
         super().__init__()
 
     def get_global_filter(self):
