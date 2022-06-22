@@ -33,7 +33,7 @@ class BotController(
 ):
 
     def __init__(self, bot_name, use_uvloop=False, user_table=None):
-        for var in ['api_id', 'api_hash', 'db_url', 'dev_ids']:
+        for var in ['api_id', 'api_hash', 'bot_token', 'db_url', 'dev_ids']:
             setattr(self, var, os.getenv(var.upper()))
             if not getattr(self, var):
                 raise RuntimeError(f'"{var.upper()}" environment variable not specified')
@@ -77,6 +77,7 @@ class BotController(
             'telegram_account',
             api_id=self.api_id,
             api_hash=self.api_hash,
+            bot_token=self.bot_token,
             workdir='.',
             sleep_threshold=0,
         )
