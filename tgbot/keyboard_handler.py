@@ -34,8 +34,8 @@ class KeyboardHandler:
                 button = pyrogram.types.InlineKeyboardButton(text=button_name, callback_data=callback_data)
                 row.append(button)
             keyboard.append(row)
-        self.db.add_all(db_buttons)
-        await self.db.commit()
+        async with self.db.begin() as db:
+            db.add_all(db_buttons)
         return pyrogram.types.InlineKeyboardMarkup(keyboard)
 
     @on_callback_query()
@@ -44,7 +44,8 @@ class KeyboardHandler:
         stmt = select(Button).where(
             Button.callback_data == callback_data
         )
-        db_button = (await self.db.execute(stmt)).scalar()
+        async with self.db.begin() as db:
+            db_button = (await db.execute(stmt)).scalar()
         if not db_button:
             await callback_query.answer('Извините, эта клавиатура устарела и больше не обслуживается. Пожалуйста, попробуйте воспользоваться клавиатурой из более позднего сообщения.', show_alert=True)
             return

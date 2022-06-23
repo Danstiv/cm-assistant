@@ -2,6 +2,7 @@ import os
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.orm import sessionmaker
 
 
 class DB:
@@ -11,9 +12,8 @@ class DB:
             os.environ['DB_URL'],
         )
         self.db_engine = engine
-        async_session = AsyncSession(engine, expire_on_commit=False)
+        async_session = sessionmaker(engine, AsyncSession, expire_on_commit=False)
         self.db = async_session
 
     async def close_db(self):
-        await self.db.close()
         await self.db_engine.dispose()
