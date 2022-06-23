@@ -3,6 +3,7 @@ from contextvars import ContextVar
 from sqlalchemy import select
 
 from tgbot.handler_decorators import on_message
+from tgbot.helpers import ContextVarWrapper
 
 user_storage = ContextVar('tg_user')
 
@@ -11,6 +12,7 @@ class UserHandler:
     @on_message()
     async def initial_handler(self, message):
         user = await self.get_or_create_user(message.from_user.id)
+        user.tg = message.from_user
         user_storage.set(user)
         message.continue_propagation()
 
@@ -27,23 +29,4 @@ class UserHandler:
         return user
 
 
-class EmptyUserContextException(Exception):
-    pass
-
-
-class UserContext:
-
-    def get(self, *args, **kwargs):
-        try:
-            return user_storage.get(*args, **kwargs)
-        except LookupError:
-            raise EmptyUserContextException
-
-    def __getattr__(self, name):
-        return getattr(self.get(), name)
-
-    def __setattr__(self, name, value):
-        return setattr(self.get(), name, value)
-
-
-user_context = user = UserContext()
+user_context = user = ContextVarWrapper(user_storage)

@@ -1,1 +1,2 @@
 -r tgbot/requirements.txt
+aiosqlite==0.17.0
