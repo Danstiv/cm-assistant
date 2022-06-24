@@ -36,5 +36,5 @@ class UserHandler:
             if not user:
                 user = self.User(user_id=user_id)
                 db.add(user)
-        self.log.info(f'Создан пользователь {user_id}')
+                self.log.info(f'Создан пользователь {user_id}')
         return user
