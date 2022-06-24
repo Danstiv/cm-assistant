@@ -26,26 +26,27 @@ class Controller(BotController):
 
     async def initialize(self):
         await super().initialize()
-        self.group_id = (await self.db.execute(select(Group.group_id))).scalar()
+        async with self.db.begin() as db:
+            self.group_id = (await db.execute(select(Group.group_id))).scalar()
 
     @on_message(filters.new_chat_members)
     async def join_handler(self, message):
         events = []
         timestamp = int(time.time())
-        for member in message.new_chat_members:
-            event = Event(
-                user_id=member.id,
-                time=timestamp,
-                type=EventType.JOIN
-            )
-            events.append(event)
-            if self.group_id is None and member.is_self:
-                self.group_id = message.chat.id
-                self.db.add(Group(group_id=self.group_id))
-                user.role = UserRole.ADMIN
-                self.log.info(f'Бот ассоциирован с группой. Группа: {self.group_id}, администратор: {user.user_id}')
-        self.db.add_all(events)
-        await self.db.commit()
+        async with self.db.begin() as db:
+            for member in message.new_chat_members:
+                event = Event(
+                    user_id=member.id,
+                    time=timestamp,
+                    type=EventType.JOIN
+                )
+                events.append(event)
+                if self.group_id is None and member.is_self:
+                    self.group_id = message.chat.id
+                    db.add(Group(group_id=self.group_id))
+                    user.role = UserRole.ADMIN
+                    self.log.info(f'Бот ассоциирован с группой. Группа: {self.group_id}, администратор: {user.user_id}')
+            db.add_all(events)
         self.log.info(f'Добавлено {len(events)} участников')
         try:
             await message.delete()
@@ -69,7 +70,8 @@ class Controller(BotController):
             await message.reply('Этот пользователь уже является админом')
             return
         admin.role = UserRole.ADMIN
-        await self.db.commit()
+        async with self.db.begin() as db:
+            db.add(admin)
         await message.reply('Готово.')
         self.log.info(f'Пользователь {user.user_id} сделал админом пользователя {admin.user_id}')
 
@@ -79,16 +81,17 @@ class Controller(BotController):
             return
         date = datetime.datetime.now()-datetime.timedelta(days=7)
         start_timestamp = int(date.timestamp())
-        stmt = select(func.count()).select_from(Event).where(
+        joins_stmt = select(func.count()).select_from(Event).where(
             Event.type==EventType.JOIN,
             Event.time >= start_timestamp
         )
-        joins = (await self.db.execute(stmt)).scalar()
-        stmt = select(func.count()).select_from(Event).where(
+        messages_stmt = select(func.count()).select_from(Event).where(
             Event.type==EventType.MESSAGE,
             Event.time >= start_timestamp
         )
-        messages = (await self.db.execute(stmt)).scalar()
+        async with self.db.begin() as db:
+            joins = (await db.execute(joins_stmt)).scalar()
+            messages = (await db.execute(messages_stmt)).scalar()
         await message.reply(
             f'Статистика с {date:%Y-%m-%d %H:%M:%S}\n'
             f'Новых пользователей: {joins}\n'
@@ -99,12 +102,12 @@ class Controller(BotController):
     async def group_message_handler(self, message):
         if message.chat.id != self.group_id:
             return
-        self.db.add(Event(
-            user_id=user.user_id,
-            time=int(time.time()),
-            type=EventType.MESSAGE
-        ))
-        await self.db.commit()
+        async with self.db.begin() as db:
+            db.add(Event(
+                user_id=user.user_id,
+                time=int(time.time()),
+                type=EventType.MESSAGE
+            ))
 
 
 if __name__ == '__main__':

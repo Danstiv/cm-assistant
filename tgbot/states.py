@@ -64,12 +64,12 @@ class StatesGroup(metaclass=StatesGroupMeta):
             cls.table.chat_id == chat.id,
             cls.table.user_id == user_id,
         )
-        current_row = (await controller.db.execute(stmt)).scalar()
-        if current_row is not None:
-            await controller.db.delete(current_row)
-            await controller.db.commit()
-        controller.db.add(row)
-        await controller.db.commit()
+        async with controller.db.begin() as db:
+            current_row = (await db.execute(stmt)).scalar()
+            if current_row is not None:
+                await db.delete(current_row)
+                await db.flush()
+            db.add(row)
         obj = cls(controller, row)
         return obj
 
@@ -80,19 +80,20 @@ class StatesGroup(metaclass=StatesGroupMeta):
             or_(cls.table.user_id == (DEFAULT_USER_ID if user is None else user.id), cls.table.user_id == DEFAULT_USER_ID),
             cls.table.current_state == state
         )
-        state = (await controller.db.execute(stmt)).scalar()
+        async with controller.db.begin() as db:
+            state = (await db.execute(stmt)).scalar()
         if state is None:
             return
         return cls(controller, state)
 
     async def set(self, value):
-        setattr(self.row, self.row.current_state, value)
-        columns = self.table.__table__.c
-        for i, column in enumerate(columns):
-            if column.name == self.row.current_state:
-                self.row.current_state = columns[i+1].name if i < len(columns) -1 else None
-                break
-        await self.controller.db.commit()
+        async with self.controller.db.begin() as db:
+            setattr(self.row, self.row.current_state, value)
+            columns = self.table.__table__.c
+            for i, column in enumerate(columns):
+                if column.name == self.row.current_state:
+                    self.row.current_state = columns[i+1].name if i < len(columns) -1 else None
+                    break
 
     def __getattr__(self, name):
         if hasattr(self.row, name):
