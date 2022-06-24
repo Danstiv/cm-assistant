@@ -16,7 +16,7 @@ from tables import (
 )
 from tgbot import BotController
 from tgbot.handler_decorators import on_message
-from tgbot.user_handler import user
+from tgbot.user_handler import current_user
 
 
 class Controller(BotController):
@@ -44,8 +44,8 @@ class Controller(BotController):
                 if self.group_id is None and member.is_self:
                     self.group_id = message.chat.id
                     db.add(Group(group_id=self.group_id))
-                    user.role = UserRole.ADMIN
-                    self.log.info(f'Бот ассоциирован с группой. Группа: {self.group_id}, администратор: {user.user_id}')
+                    current_user.role = UserRole.ADMIN
+                    self.log.info(f'Бот ассоциирован с группой. Группа: {self.group_id}, администратор: {current_user.user_id}')
             db.add_all(events)
         self.log.info(f'Добавлено {len(events)} участников')
         try:
@@ -55,29 +55,29 @@ class Controller(BotController):
 
     @on_message(filters.private&filters.command('admin'))
     async def admin_handler(self, message):
-        if user.role != UserRole.ADMIN:
+        if current_user.role != UserRole.ADMIN:
             return
         if len(message.command) < 2:
             await message.reply('Задайте username')
             return
         try:
-            admin = await self.app.get_users(message.command[1])
+            user = await self.app.get_users(message.command[1])
         except pyrogram.errors.BadRequest:
             await message.reply('Пользователь не найден')
             return
-        admin = await self.get_or_create_user(admin.id)
-        if admin.role == UserRole.ADMIN:
+        user = await self.get_or_create_user(user.id)
+        if user.role == UserRole.ADMIN:
             await message.reply('Этот пользователь уже является админом')
             return
-        admin.role = UserRole.ADMIN
+        user.role = UserRole.ADMIN
         async with self.db.begin() as db:
-            db.add(admin)
+            db.add(user)
         await message.reply('Готово.')
-        self.log.info(f'Пользователь {user.user_id} сделал админом пользователя {admin.user_id}')
+        self.log.info(f'Пользователь {current_user.user_id} сделал админом пользователя {user.user_id}')
 
     @on_message(filters.private&filters.command('stats'))
     async def stats_handler(self, message):
-        if user.role != UserRole.ADMIN:
+        if current_user.role != UserRole.ADMIN:
             return
         date = datetime.datetime.now()-datetime.timedelta(days=7)
         start_timestamp = int(date.timestamp())
@@ -104,7 +104,7 @@ class Controller(BotController):
             return
         async with self.db.begin() as db:
             db.add(Event(
-                user_id=user.user_id,
+                user_id=current_user.user_id,
                 time=int(time.time()),
                 type=EventType.MESSAGE
             ))
