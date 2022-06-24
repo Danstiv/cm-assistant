@@ -61,8 +61,11 @@ class Controller(BotController):
             await message.reply('Задайте username')
             return
         try:
-            user = await self.app.get_users(message.command[1])
-        except (pyrogram.errors.BadRequest, IndexError):
+            user_list = await self.app.get_users([message.command[1]])
+            user = user_list[0] if user_list else None
+        except pyrogram.errors.BadRequest:
+            user = None
+        if not user:
             await message.reply('Пользователь не найден')
             return
         user = await self.get_or_create_user(user.id)
