@@ -2,7 +2,7 @@ from functools import wraps
 import sys
 
 import pyrogram
-from tgbot.states import state_storage
+from tgbot.states import current_state
 
 handlers = []
 
@@ -25,15 +25,13 @@ def make_handler_decorator(decorator_name):
                 if state is not None:
                     if isinstance(args[0], pyrogram.types.Message):
                         message = args[0]
-                    elif isinstance(args[0], pyrogram.types.CallbackQuery):
-                        message = args[0].message
                     else:
                         self.log.error(f'Обработчик {handler_name}. Возможность использования состояний не реализована для этого типа обработчиков.')
                         return
                     state_obj = await state[0].get_state(self, state[1], message.chat, message.from_user)
                     if not state_obj:
                         raise pyrogram.ContinuePropagation
-                    state_storage.set(state_obj)
+                    current_state.set_context_var_value(state_obj)
                 try:
                     return await func(self, *args)
                 except (pyrogram.ContinuePropagation, pyrogram.StopPropagation):
@@ -47,7 +45,11 @@ def make_handler_decorator(decorator_name):
                 'handler_name': handler_name,
             }
             handlers.append(handler_info)
-            return wrapper
+            if not getattr(func, 'wrapped', False):
+                wrapper.wrapped = True
+                return wrapper
+            else:
+                return func
         return decorator
     return handler_decorator
 

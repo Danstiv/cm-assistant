@@ -1,28 +1,27 @@
-from contextvars import ContextVar
-
 from sqlalchemy import select
 
-from tgbot.handler_decorators import on_message
+from tgbot.handler_decorators import on_callback_query, on_message
 from tgbot.helpers import ContextVarWrapper
 
-user_storage = ContextVar('tg_user')
-current_user = ContextVarWrapper(user_storage)
+current_user = ContextVarWrapper('current_user')
 
 
 class UserHandler:
 
-    @on_message()
-    async def load_user_handler(self, message):
-        if not message.from_user:
-            message.continue_propagation()
-        user = await self.get_or_create_user(message.from_user.id)
-        user.tg = message.from_user
-        user_storage.set(user)
-        message.continue_propagation()
+    @on_callback_query(group=-0xbadbeef)
+    @on_message(group=-0xbadbeef)
+    async def load_user_handler(self, update):
+        if not update.from_user:
+            update.continue_propagation()
+        user = await self.get_or_create_user(update.from_user.id)
+        user.pyrogram_user = update.from_user
+        current_user.set_context_var_value(user)
+        update.continue_propagation()
 
+    @on_callback_query(group=0xbaddeadbed)
     @on_message(group=0xbaddeadbed)
-    async def save_user_handler(self, message):
-        if not message.from_user:
+    async def save_user_handler(self, update):
+        if not update.from_user:
             return
         async with self.db.begin() as db:
             db.add(current_user)

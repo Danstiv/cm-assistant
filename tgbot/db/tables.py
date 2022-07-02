@@ -1,15 +1,14 @@
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import declarative_base
+from tgbot.keyboard_handler import ButtonMixin, button_decorator
 
 Base = declarative_base()
 
 
-class Button(Base):
-    __tablename__ = 'button'
-    id = Column(Integer, primary_key=True)
-    creation_date = Column(Integer)
-    callback_data = Column(String)
-    callback_name = Column(String)
+@button_decorator
+class SimpleButton(ButtonMixin, Base):
+    __tablename__ = 'simple_button'
+    arg = Column(String)
 
 
 class User(Base):

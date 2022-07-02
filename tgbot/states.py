@@ -1,12 +1,12 @@
-from contextvars import ContextVar
 import re
 
 from sqlalchemy import Column, Integer, String, UniqueConstraint, or_, select
 from sqlalchemy.orm import declarative_mixin, declared_attr
+
+from tgbot.constants import DEFAULT_USER_ID
 from tgbot.helpers import ContextVarWrapper
 
-state_storage = ContextVar('current_state')
-current_state = ContextVarWrapper(state_storage)
+current_state = ContextVarWrapper('current_state')
 
 WORD_START_REGEX = re.compile('(.)([A-Z][a-z]+)')
 WORD_END_REGEX = re.compile('([a-z0-9])([A-Z])')
@@ -16,7 +16,6 @@ def class_to_table_name(class_name):
     class_name = WORD_END_REGEX.sub(r'\1_\2', class_name)
     return class_name.lower()
 
-DEFAULT_USER_ID = 0
 
 @declarative_mixin
 class StateMixin:
