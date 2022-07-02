@@ -1,8 +1,14 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, LargeBinary, String
 from sqlalchemy.orm import declarative_base
 from tgbot.keyboard_handler import ButtonMixin, button_decorator
 
 Base = declarative_base()
+
+
+class PyrogramClientState(Base):
+    __tablename__ = 'pyrogram_client_state'
+    id = Column(Integer, primary_key=True)
+    state = Column(LargeBinary, nullable=False)
 
 
 @button_decorator

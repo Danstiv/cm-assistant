@@ -10,12 +10,15 @@ try:
 except ImportError:
     uvloop = None
 
+from sqlalchemy import select
 from tgbot import (
     custom_methods,
     db,
     exception_handler,
+    pyrogram_client_state_management,
 )
 from tgbot.core import Core
+from tgbot.db import tables
 from tgbot.handler_decorators import get_handlers
 from tgbot.keyboard_handler import KeyboardHandler
 from tgbot.message_handler import MessageHandler
@@ -82,7 +85,9 @@ class BotController(
             sleep_threshold=0,
         )
         await self.initialize()
-        await self.app.start()
+        async with self.db.begin() as db:
+            state = (await db.execute(select(tables.PyrogramClientState))).scalar()
+        await pyrogram_client_state_management.set_pyrogram_client_state_and_start(self.app, state.state if state else None)
         self.add_task(self.message_sender, 23)
         self.log.info('Приложение запущено')
         try:
@@ -90,7 +95,14 @@ class BotController(
         finally:
             print('\r', end='')  # To remove C character from terminal
             self.log.info('Выход')
+            state = pyrogram_client_state_management.get_pyrogram_client_state(self.app)
             await self.app.stop()
+            async with self.db.begin() as db:
+                db_state = (await db.execute(select(tables.PyrogramClientState))).scalar()
+                if not db_state:
+                    db.add(tables.PyrogramClientState(state=state))
+                else:
+                    db_state.state = state
             await self.close_db()
 
     def stop_from_signal(self, *args, **kwargs):
