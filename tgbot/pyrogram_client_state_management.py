@@ -12,6 +12,11 @@ from pyrogram.session.internals.msg_id import MsgId
 
 def get_pyrogram_client_state(client):
     state = {}
+    state['session.dc_id'] = client.session.dc_id
+    state['session.auth_key'] = client.session.auth_key
+    state['session.test_mode'] = client.session.test_mode
+    state['session.is_media'] = client.session.is_media
+    state['session.is_cdn'] = client.session.is_cdn
     state['session.session_id'] = client.session.session_id
     state['session.msg_factory.seq_no.content_related_messages_sent'] = client.session.msg_factory.seq_no.content_related_messages_sent
     state['msg_id.reference_clock'] = MsgId.reference_clock
@@ -33,6 +38,11 @@ async def set_pyrogram_client_state_and_start(client, state=None):
     )
     if state is not None:
         state = pickle.loads(state)
+        client.session.dc_id = state['session.dc_id']
+        client.session.auth_key = state['session.auth_key']
+        client.session.test_mode = state['session.test_mode']
+        client.session.is_media = state['session.is_media']
+        client.session.is_cdn = state['session.is_cdn']
         client.session.session_id = state['session.session_id']
         client.session.msg_factory.seq_no.content_related_messages_sent = state['session.msg_factory.seq_no.content_related_messages_sent'] + 42
         MsgId.reference_clock = state['msg_id.reference_clock']
@@ -55,5 +65,12 @@ async def set_pyrogram_client_state_and_start(client, state=None):
         await client.disconnect()
         raise
     else:
-        await client.initialize()
+        if not client.is_connected:
+            raise ConnectionError("Can't initialize a disconnected client")
+        if client.is_initialized:
+            raise ConnectionError("Client is already initialized")
+        client.load_plugins()
+        client.me = await client.get_me()
+        await client.dispatcher.start()
+        client.is_initialized = True
         return client
