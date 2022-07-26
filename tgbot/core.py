@@ -8,7 +8,7 @@ LOG_MAX_SIZE = 10*2**20  # 10MB
 LOG_MAX_BACKUPS = 9
 
 
-class Core:
+class TGBotCoreMixin:
 
     def __init__(self):
         self.async_tasks = []

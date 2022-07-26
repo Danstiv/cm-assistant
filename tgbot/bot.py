@@ -15,21 +15,21 @@ from tgbot import (
     db,
     exception_handler,
 )
-from tgbot.core import Core
+from tgbot.core import TGBotCoreMixin
 from tgbot.handler_decorators import get_handlers
-from tgbot.keyboard_handler import KeyboardHandler
-from tgbot.message_handler import MessageHandler
-from tgbot.user_handler import UserHandler
+from tgbot.keyboard import TGBotKeyboardMixin
+from tgbot.messages import TGBotMessagesMixin
+from tgbot.users import TGBotUsersMixin
 
 dotenv.load_dotenv()
 
 
 class BotController(
-    Core,
-    db.DB,
-    KeyboardHandler,
-    MessageHandler,
-    UserHandler,
+    TGBotCoreMixin,
+    db.TGBotDBMixin,
+    TGBotKeyboardMixin,
+    TGBotMessagesMixin,
+    TGBotUsersMixin,
 ):
 
     def __init__(self, bot_name, use_uvloop=False, user_table=None):
@@ -42,7 +42,7 @@ class BotController(
         self.app = None
         if sys.platform != 'win32' and use_uvloop:
             if not uvloop:
-                self.log.warning('uvloop не установлен')
+                raise ValueError('uvloop is not installed')
             else:
                 uvloop.install()
         self.User = user_table or db.tables.User

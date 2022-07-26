@@ -1,13 +1,18 @@
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.orm import declarative_base
-from tgbot.keyboard_handler import ButtonMixin, button_decorator
+
+from tgbot.keyboard.mixins import ButtonMixin, CheckBoxButtonMixin
 
 Base = declarative_base()
 
 
-@button_decorator
 class SimpleButton(ButtonMixin, Base):
     __tablename__ = 'simple_button'
+    arg = Column(String)
+
+
+class SimpleCheckBoxButton(CheckBoxButtonMixin, Base):
+    __tablename__ = 'simple_check_box_button'
     arg = Column(String)
 
 

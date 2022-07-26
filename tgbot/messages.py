@@ -9,7 +9,7 @@ from tgbot.limiter import Limiter
 from tgbot.prioritized_item import PrioritizedItem
 
 
-class MessageHandler:
+class TGBotMessagesMixin:
 
     def __init__(self):
         self.message_queue = asyncio.PriorityQueue()

@@ -4,7 +4,7 @@ from sqlalchemy import Column, Integer, String, UniqueConstraint, or_, select
 from sqlalchemy.orm import declarative_mixin, declared_attr
 
 from tgbot.constants import DEFAULT_USER_ID
-from tgbot.helpers import ContextVarWrapper
+from tgbot.helpers import ContextVarWrapper, SQLAlchemyRowWrapper
 
 current_state = ContextVarWrapper('current_state')
 
@@ -40,7 +40,7 @@ class StatesGroupMeta(type):
         raise AttributeError(f'Column {name} not found')
 
 
-class StatesGroup(metaclass=StatesGroupMeta):
+class StatesGroup(SQLAlchemyRowWrapper, metaclass=StatesGroupMeta):
     STATE_MIXIN_COLUMNS = len(list(filter(
         lambda k: not k.startswith('_'),
         StateMixin.__dict__
@@ -86,18 +86,13 @@ class StatesGroup(metaclass=StatesGroupMeta):
         return cls(controller, state)
 
     async def set(self, value):
-        async with self.controller.db.begin() as db:
-            setattr(self.row, self.row.current_state, value)
-            columns = self.table.__table__.c
-            for i, column in enumerate(columns):
-                if column.name == self.row.current_state:
-                    self.row.current_state = columns[i+1].name if i < len(columns) -1 else None
-                    break
-
-    def __getattr__(self, name):
-        if hasattr(self.row, name):
-            return getattr(self.row, name)
-        raise AttributeError
+        setattr(self.row, self.row.current_state, value)
+        columns = self.table.__table__.c
+        for i, column in enumerate(columns):
+            if column.name == self.row.current_state:
+                self.row.current_state = columns[i+1].name if i < len(columns) -1 else None
+                break
+        await self.save()
 
 
 def generate_state_group(table, name=None):

@@ -5,14 +5,13 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 
-class DB:
+class TGBotDBMixin:
 
     async def init_db(self):
-        engine = create_async_engine(
-            os.environ['DB_URL'],
+        self.db_engine = create_async_engine(
+            self.db_url,
         )
-        self.db_engine = engine
-        async_session = sessionmaker(engine, AsyncSession, expire_on_commit=False)
+        async_session = sessionmaker(self.db_engine, AsyncSession, expire_on_commit=False)
         self.db = async_session
 
     async def close_db(self):

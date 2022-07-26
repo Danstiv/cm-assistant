@@ -6,7 +6,7 @@ from tgbot.helpers import ContextVarWrapper
 current_user = ContextVarWrapper('current_user')
 
 
-class UserHandler:
+class TGBotUsersMixin:
 
     @on_callback_query(group=-0xbadbeef)
     @on_message(group=-0xbadbeef)
