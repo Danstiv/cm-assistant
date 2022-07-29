@@ -9,6 +9,7 @@ import pyrogram
 from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus
 from sqlalchemy import func, select
+
 from tables import (
     Event,
     EventType,
@@ -17,10 +18,16 @@ from tables import (
     User,
     UserRole,
 )
+import texts
 from tgbot import BotController
+from tgbot.group_manager import group_manager
 from tgbot.handler_decorators import on_message
 from tgbot.helpers import ContextVarWrapper
 from tgbot.users import current_user
+
+group_manager.add_left_group('load_group')
+group_manager.add_right_group('save_group')
+group_manager.add_left_group('start_in_group')
 
 current_group = ContextVarWrapper('current_group')
 
@@ -29,7 +36,7 @@ class Controller(BotController):
     def __init__(self):
         super().__init__(bot_name='cm_assistant', user_table=User)
 
-    @on_message(filters.group, group=-999)
+    @on_message(filters.group, group=group_manager.LOAD_GROUP)
     async def load_group_handler(self, message):
         stmt = select(Group).where(
             Group.group_id == message.chat.id
@@ -40,7 +47,7 @@ class Controller(BotController):
             return
         current_group.set_context_var_value(group)
 
-    @on_message(filters.group, group=999)
+    @on_message(filters.group, group=group_manager.SAVE_GROUP)
     async def save_group_handler(self, message):
         if not current_group.is_set:
             return
@@ -49,25 +56,18 @@ class Controller(BotController):
 
     @on_message(filters.command('start') & filters.private)
     async def start_handler(self, message):
-        await message.reply(
-            '''Приветствую!\n'''
-            '''Я бот, позволяющий <бла-бла-бла>\n'''
-            '''Для управления группами используйте команду /settings (подписки на рассылки, прохождение опросов и т.п.)\n'''
-            '''Для администрирования групп используйте команду /admin (просмотр статистики, создание рассылок и т.п.)\n'''
-            '''Для привязки бота к вашей группе используйте команду /bind.\n'''
-        )
+        await message.reply(texts.START_MESSAGE)
 
     @on_message(filters.command('bind') & filters.private)
     async def bind_handler(self, message):
         current_user.group_bind_code = ''.join(random.choices(string.ascii_lowercase + string.ascii_uppercase + string.digits, k=42))
         bind_button = pyrogram.types.InlineKeyboardButton('Привязать', url=f'https://t.me/{self.app.me.username}?startgroup={current_user.group_bind_code}')
         await message.reply(
-            '''Для привязки воспользуйтесь кнопкой "Привязать", добавьте бота в группу и сделайте его администратором.\n'''
-            '''Затем вернитесь в этот чат, чтобы произвести дальнейшую настройку.''',
+            texts.BIND_TEXT,
             reply_markup=pyrogram.types.InlineKeyboardMarkup([[bind_button]])
         )
 
-    @on_message(filters.command('start') & filters.group, group=-998)
+    @on_message(filters.command('start') & filters.group, group=group_manager.START_IN_GROUP)
     async def group_start_handler(self, message):
         self.log.info('Начата обработка команды /start')
         group_bind_code = message.command[1] if len(message.command) > 1 else None
