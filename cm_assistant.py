@@ -67,6 +67,12 @@ class Controller(BotController):
             reply_markup=pyrogram.types.InlineKeyboardMarkup([[bind_button]])
         )
 
+    @on_message(filters.command('settings') & filters.private)
+    async def settings_handler(self, message):
+        if not current_user.groups:
+            await message.reply('Вы не состоите ни в одной из групп, к которым я привязан.')
+            return
+
     @on_message(filters.command('start') & filters.group, group=group_manager.START_IN_GROUP)
     async def group_start_handler(self, message):
         self.log.info('Начата обработка команды /start')
