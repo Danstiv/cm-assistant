@@ -4,12 +4,12 @@ from collections import OrderedDict
 from pyrogram.enums.parse_mode import ParseMode
 from pyrogram.utils import get_peer_type
 
-from tgbot import split_text
+from tgbot.helpers import split_text
 from tgbot.limiter import Limiter
-from tgbot.prioritized_item import PrioritizedItem
+from tgbot.helpers.prioritized_item import PrioritizedItem
 
 
-class MessageHandler:
+class TGBotMessagesMixin:
 
     def __init__(self):
         self.message_queue = asyncio.PriorityQueue()

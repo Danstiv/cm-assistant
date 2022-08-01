@@ -3,17 +3,28 @@ import logging
 import logging.handlers
 
 from tgbot.logging_helpers import Formatter, WarningErrorHandler
+from tgbot.helpers import EmptyContextVarException
+from tgbot.users import current_user
 
 LOG_MAX_SIZE = 10*2**20  # 10MB
 LOG_MAX_BACKUPS = 9
+old_log_record_factory = logging.getLogRecordFactory()
+def log_record_factory(*args, **kwargs):
+	record = old_log_record_factory(*args, **kwargs)
+	try:
+		record.user_id = current_user.user_id
+	except EmptyContextVarException:
+		record.user_id = 0
+	return record
 
 
-class Core:
+class TGBotCoreMixin:
 
     def __init__(self):
         self.async_tasks = []
         self.monitor_task = None
         self.canceling = False
+        logging.setLogRecordFactory(log_record_factory)
         self.log = logging.getLogger(self.bot_name)
         self.log.setLevel(logging.DEBUG)
         console_handler = logging.StreamHandler()
@@ -29,7 +40,7 @@ class Core:
         file_handler.setLevel(logging.DEBUG)
         detailed_formatter = Formatter(
             '%(asctime)s - %(levelname)s - %(module)s'
-            '.%(funcName)s (%(lineno)d)\n%(message)s'
+            '.%(funcName)s (%(lineno)d) #%(user_id)d\n%(message)s'
         )
         file_handler.setFormatter(detailed_formatter)
         self.log.addHandler(file_handler)

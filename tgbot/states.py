@@ -1,12 +1,15 @@
-from contextvars import ContextVar
 import re
 
 from sqlalchemy import Column, Integer, String, UniqueConstraint, or_, select
 from sqlalchemy.orm import declarative_mixin, declared_attr
-from tgbot.helpers import ContextVarWrapper
 
-state_storage = ContextVar('current_state')
-current_state = ContextVarWrapper(state_storage)
+from tgbot.constants import DEFAULT_USER_ID
+from tgbot.db import db
+from tgbot.helpers import ContextVarWrapper
+from tgbot.helpers.sqlalchemy_row_wrapper import SQLAlchemyRowWrapper
+
+
+current_state = ContextVarWrapper('current_state')
 
 WORD_START_REGEX = re.compile('(.)([A-Z][a-z]+)')
 WORD_END_REGEX = re.compile('([a-z0-9])([A-Z])')
@@ -16,7 +19,6 @@ def class_to_table_name(class_name):
     class_name = WORD_END_REGEX.sub(r'\1_\2', class_name)
     return class_name.lower()
 
-DEFAULT_USER_ID = 0
 
 @declarative_mixin
 class StateMixin:
@@ -41,7 +43,7 @@ class StatesGroupMeta(type):
         raise AttributeError(f'Column {name} not found')
 
 
-class StatesGroup(metaclass=StatesGroupMeta):
+class StatesGroup(SQLAlchemyRowWrapper, metaclass=StatesGroupMeta):
     STATE_MIXIN_COLUMNS = len(list(filter(
         lambda k: not k.startswith('_'),
         StateMixin.__dict__
@@ -64,12 +66,12 @@ class StatesGroup(metaclass=StatesGroupMeta):
             cls.table.chat_id == chat.id,
             cls.table.user_id == user_id,
         )
-        async with controller.db.begin() as db:
-            current_row = (await db.execute(stmt)).scalar()
-            if current_row is not None:
-                await db.delete(current_row)
-                await db.flush()
-            db.add(row)
+        current_row = (await db.execute(stmt)).scalar()
+        if current_row is not None:
+            await db.delete(current_row)
+            await db.flush()
+        db.add(row)
+        await db.commit()
         obj = cls(controller, row)
         return obj
 
@@ -80,25 +82,28 @@ class StatesGroup(metaclass=StatesGroupMeta):
             or_(cls.table.user_id == (DEFAULT_USER_ID if user is None else user.id), cls.table.user_id == DEFAULT_USER_ID),
             cls.table.current_state == state
         )
-        async with controller.db.begin() as db:
-            state = (await db.execute(stmt)).scalar()
+        state = (await db.execute(stmt)).scalar()
         if state is None:
             return
         return cls(controller, state)
 
     async def set(self, value):
-        async with self.controller.db.begin() as db:
-            setattr(self.row, self.row.current_state, value)
-            columns = self.table.__table__.c
-            for i, column in enumerate(columns):
-                if column.name == self.row.current_state:
-                    self.row.current_state = columns[i+1].name if i < len(columns) -1 else None
-                    break
+        setattr(self, self.current_state, value)
+        columns = self.table.__table__.c
+        for i, column in enumerate(columns):
+            if column.name == self.current_state:
+                self.current_state = columns[i+1].name if i < len(columns) -1 else None
+                break
+        await self.save()
 
-    def __getattr__(self, name):
-        if hasattr(self.row, name):
-            return getattr(self.row, name)
-        raise AttributeError
+    async def set_current_state(self, state):
+        self.current_state = state[1]
+        await self.save()
+
+    async def finish(self):
+        await db.delete(self.row)
+        del self.row
+        await db.commit()
 
 
 def generate_state_group(table, name=None):
