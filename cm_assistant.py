@@ -75,6 +75,8 @@ class Controller(BotController):
         )
 
     async def get_settings_message_data(self):
+        if not current_user.groups:
+            return 'Вы не состоите ни в одной из групп, к которым я привязан.', None
         keyboard = [[]]
         for group in current_user.groups:
             keyboard[0].append(
@@ -85,9 +87,6 @@ class Controller(BotController):
 
     @on_message(filters.command('settings') & filters.private)
     async def settings_handler(self, message):
-        if not current_user.groups:
-            await message.reply('Вы не состоите ни в одной из групп, к которым я привязан.')
-            return
         text, keyboard = await self.get_settings_message_data()
         await message.reply(text, reply_markup=keyboard)
 
