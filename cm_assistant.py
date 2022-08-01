@@ -20,6 +20,7 @@ from tables import (
 )
 import texts
 from tgbot import BotController
+from tgbot.db import db
 from tgbot.group_manager import group_manager
 from tgbot.handler_decorators import on_message
 from tgbot.helpers import ContextVarWrapper
@@ -41,8 +42,7 @@ class Controller(BotController):
         stmt = select(Group).where(
             Group.group_id == message.chat.id
         )
-        async with self.db.begin() as db:
-            group = (await db.execute(stmt)).scalar()
+        group = (await db.execute(stmt)).scalar()
         if not group:
             return
         current_group.set_context_var_value(group)
@@ -51,8 +51,8 @@ class Controller(BotController):
     async def save_group_handler(self, message):
         if not current_group.is_set:
             return
-        async with self.db.begin() as db:
-            db.add(current_group)
+        db.add(current_group)
+        await db.commit()
 
     @on_message(filters.command('start') & filters.private)
     async def start_handler(self, message):
@@ -80,8 +80,7 @@ class Controller(BotController):
         if group_bind_code:
             self.log.info('Выполняется получение пользователя из базы по переданному коду')
             stmt = select(User).where(User.group_bind_code == group_bind_code)
-            async with self.db.begin() as db:
-                user = (await db.execute(stmt)).scalar()
+            user = (await db.execute(stmt)).scalar()
             self.log.info(f'Пользователь{" " if user else " не "}был получен')
         else:
             self.log.info('Код не был передан')
@@ -115,9 +114,9 @@ class Controller(BotController):
             self.log.info('Производится создание инстанса группы и привязка пользователя к ней')
             group = Group(group_id=message.chat.id)
             association = GroupUserAssociation(group=group, user=user, role=UserRole.ADMIN)
-            async with self.db.begin() as db:
-                db.add(group)
-                user.group_bind_code = None
+            db.add(group)
+            user.group_bind_code = None
+            await db.commit()
             current_group.set_context_var_value(group)
             await self.send_message('Привязка выполнена, теперь вы можете использовать команду /admin для настройки.', user.user_id)
             self.log.info(f'Бот ассоциирован с группой. Группа: {message.chat.id}, администратор: {user.user_id}')
@@ -136,29 +135,28 @@ class Controller(BotController):
                 self.log.info('Пользователь не является администратором группы')
                 await self.send_message('Роль админа таким способом может получить только администратор группы.', chat_id=message.chat.id, blocking=True)
                 return
-            async with self.db.begin() as db:
-                db.add(current_group)
-                user = await db.merge(user)
-                if current_group not in user.groups:
-                    self.log.info('Пользователь не связан с группой, выполняется создание объекта привязки')
-                    association = GroupUserAssociation(group=current_group, user=user)
-                    db.add(association)
-                    self.log.info('Объект привязки создан')
-                else:
-                    self.log.info('Пользователь связан с группой, производится поиск объекта привязки')
-                    association  = None
-                    for a in user.group_associations:
-                        if a.group == current_group:
-                            association = a
-                            self.log.info('Объект привязки найден')
-                            break
-                if association.role == UserRole.ADMIN:
-                    self.log.info('Пользователь уже является админом в группе')
-                    await self.send_message('Эта группа уже привязана, и вы являетесь админом. Используйте команду /admin для настройки.', user.user_id)
-                    return
-                self.log.info('Задаётся роль админа для пользователя')
-                association.role = UserRole.ADMIN
-                await self.send_message('Вам назначена роль админа. Используйте команду /admin для настройки.', user.user_id)
+            db.add(current_group)
+            if current_group not in user.groups:
+                self.log.info('Пользователь не связан с группой, выполняется создание объекта привязки')
+                association = GroupUserAssociation(group=current_group, user=user)
+                db.add(association)
+                self.log.info('Объект привязки создан')
+            else:
+                self.log.info('Пользователь связан с группой, производится поиск объекта привязки')
+                association  = None
+                for a in user.group_associations:
+                    if a.group == current_group:
+                        association = a
+                        self.log.info('Объект привязки найден')
+                        break
+            if association.role == UserRole.ADMIN:
+                self.log.info('Пользователь уже является админом в группе')
+                await self.send_message('Эта группа уже привязана, и вы являетесь админом. Используйте команду /admin для настройки.', user.user_id)
+                return
+            self.log.info('Задаётся роль админа для пользователя')
+            association.role = UserRole.ADMIN
+            await db.commit()
+            await self.send_message('Вам назначена роль админа. Используйте команду /admin для настройки.', user.user_id)
 
     @on_message(filters.new_chat_members)
     async def join_handler(self, message):
@@ -175,8 +173,8 @@ class Controller(BotController):
                 type=EventType.JOIN
             )
             events.append(event)
-        async with self.db.begin() as db:
-            db.add_all(events)
+        db.add_all(events)
+        await db.commit()
         self.log.info(f'Добавлено {len(events)} участников')
         if current_group.remove_joins:
             self.log.info('Будет выполнена попытка удалить сервисное сообщение о добавлении участников')
@@ -243,13 +241,14 @@ class Controller(BotController):
     async def group_message_handler(self, message):
         if not current_group.is_set or not current_user.is_set:
             return
-        async with self.db.begin() as db:
-            db.add(Event(
-                user_id=current_user.user_id,
-                time=int(time.time()),
-                type=EventType.MESSAGE
-            ))
+        db.add(Event(
+            user_id=current_user.user_id,
+            time=int(time.time()),
+            type=EventType.MESSAGE
+        ))
+        await db.commit()
         self.log.info('Зарегистрировано сообщение')
+
 
 if __name__ == '__main__':
     controller = Controller()

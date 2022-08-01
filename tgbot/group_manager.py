@@ -24,5 +24,7 @@ class GroupManager:
 
 group_manager = GroupManager(-1000, 1000)
 
+group_manager.add_left_group('create_session')
+group_manager.add_right_group('remove_session')
 group_manager.add_left_group('load_user')
 group_manager.add_right_group('save_user')

@@ -3,8 +3,6 @@ import contextvars
 
 class EmptyContextVarException(Exception):
     pass
-
-
 WRAPPABLE_MAGIC_METHODS = [
     '__pos__', '__neg__', '__abs__',
     '__invert__', '__round__', '__floor__',
@@ -66,23 +64,3 @@ class ContextVarWrapper(metaclass=ContextVarWrapperMetaClass):
 
     def __setattr__(self, name, value):
         return setattr(self.get_context_var_value(), name, value)
-
-
-class SQLAlchemyRowWrapper:
-
-    def __getattr__(self, name):
-        if 'row' not in self.__dict__:
-            return self.__dict__[name]
-        if hasattr(self.row, name):
-            return getattr(self.row, name)
-        raise AttributeError
-
-    def __setattr__(self, name, value):
-        if 'row' not in self.__dict__:
-            self.__dict__[name] = value
-            return
-        setattr(self.row, name, value)
-
-    async def save(self):
-        async with self.controller.db.begin() as db:
-            db.add(self.row)

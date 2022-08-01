@@ -4,7 +4,10 @@ from sqlalchemy import Column, Integer, String, UniqueConstraint, or_, select
 from sqlalchemy.orm import declarative_mixin, declared_attr
 
 from tgbot.constants import DEFAULT_USER_ID
-from tgbot.helpers import ContextVarWrapper, SQLAlchemyRowWrapper
+from tgbot.db import db
+from tgbot.helpers import ContextVarWrapper
+from tgbot.helpers.sqlalchemy_row_wrapper import SQLAlchemyRowWrapper
+
 
 current_state = ContextVarWrapper('current_state')
 
@@ -63,12 +66,12 @@ class StatesGroup(SQLAlchemyRowWrapper, metaclass=StatesGroupMeta):
             cls.table.chat_id == chat.id,
             cls.table.user_id == user_id,
         )
-        async with controller.db.begin() as db:
-            current_row = (await db.execute(stmt)).scalar()
-            if current_row is not None:
-                await db.delete(current_row)
-                await db.flush()
-            db.add(row)
+        current_row = (await db.execute(stmt)).scalar()
+        if current_row is not None:
+            await db.delete(current_row)
+            await db.flush()
+        db.add(row)
+        await db.commit()
         obj = cls(controller, row)
         return obj
 
@@ -79,8 +82,7 @@ class StatesGroup(SQLAlchemyRowWrapper, metaclass=StatesGroupMeta):
             or_(cls.table.user_id == (DEFAULT_USER_ID if user is None else user.id), cls.table.user_id == DEFAULT_USER_ID),
             cls.table.current_state == state
         )
-        async with controller.db.begin() as db:
-            state = (await db.execute(stmt)).scalar()
+        state = (await db.execute(stmt)).scalar()
         if state is None:
             return
         return cls(controller, state)

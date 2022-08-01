@@ -6,9 +6,11 @@ import pyrogram
 from sqlalchemy import select
 
 from tgbot.constants import DEFAULT_USER_ID
-from tgbot.db import tables
+from tgbot.db import db, tables
 from tgbot.handler_decorators import on_callback_query
-from tgbot.helpers import ContextVarWrapper, SQLAlchemyRowWrapper
+from tgbot.helpers import ContextVarWrapper
+from tgbot.helpers.sqlalchemy_row_wrapper import SQLAlchemyRowWrapper
+
 
 
 current_callback_query = ContextVarWrapper('current_callback_query')
@@ -100,8 +102,8 @@ async def create_keyboard(controller, keyboard):
             db_buttons.append(button.row)
             inline_keyboard_row.append(pyrogram.types.InlineKeyboardButton(button.get_inline_button_name(keyboard_button['name']), callback_data=button.callback_data))
         inline_keyboard.append(inline_keyboard_row)
-    async with controller.db.begin() as db:
-        db.add_all(db_buttons)
+    db.add_all(db_buttons)
+    await db.commit()
     return pyrogram.types.InlineKeyboardMarkup(inline_keyboard)
 
 
@@ -170,13 +172,12 @@ class TGBotKeyboardMixin:
                 result_keyboard.append(result_row)
             if row_index is None:
                 raise ValueError
-            async with self.db.begin() as db:
-                for button_class, buttons_data in button_classes_data_map.items():
-                    stmt = select(button_class.table).where(
-                        button_class.table.callback_data.in_(buttons_data)
-                    )
-                    temp = (await db.execute(stmt)).scalars()
-                    db_buttons.extend([(button_class, b) for b in temp])
+            for button_class, buttons_data in button_classes_data_map.items():
+                stmt = select(button_class.table).where(
+                    button_class.table.callback_data.in_(buttons_data)
+                )
+                temp = (await db.execute(stmt)).scalars()
+                db_buttons.extend([(button_class, b) for b in temp])
             if len(db_buttons) != buttons_with_callback_data:
                 raise ValueError
             db_buttons.sort(key=lambda b: b[1].id)
