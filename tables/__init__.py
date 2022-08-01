@@ -5,7 +5,7 @@ from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
 
 from tgbot.db.tables import Base, User
-
+from tgbot.keyboard.mixins import ButtonMixin
 
 class UserRole(enum.Enum):
     USER = 'user'
@@ -51,3 +51,8 @@ class Event(Base):
     user_id = Column(Integer, nullable=False)
     time = Column(Integer, nullable=False)
     type = Column(Enum(EventType), nullable=False)
+
+class GroupUserButton(ButtonMixin, Base):
+    __tablename__ = 'group_user_button'
+    group_id = Column(Integer, nullable=False)
+    member_id = Column(Integer, nullable=False)

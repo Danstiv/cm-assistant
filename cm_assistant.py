@@ -10,6 +10,7 @@ from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus
 from sqlalchemy import func, select
 
+from keyboard import GroupUserButton
 from tables import (
     Event,
     EventType,
@@ -18,6 +19,7 @@ from tables import (
     User,
     UserRole,
 )
+from states import AddStaffMemberForm
 import texts
 from tgbot import BotController
 from tgbot.db import db
@@ -31,6 +33,7 @@ from tgbot.keyboard import (
     create_simple_keyboard,
     current_callback_query,
 )
+from tgbot.states import current_state
 from tgbot.users import current_user
 
 group_manager.add_left_group('load_group')
@@ -125,6 +128,192 @@ class Controller(BotController):
     async def group_settings_back_handler(self, *args, **kwargs):
         text, keyboard = await self.get_settings_message_data()
         await current_callback_query.message.edit_text(text, reply_markup=keyboard)
+
+    async def get_admin_settings_message_data(self):
+        groups = []
+        for association in current_user.group_associations:
+            if not association.role in [UserRole.MODERATOR, UserRole.ADMIN]:
+                continue
+            groups.append(association.group)
+        if not groups:
+            return 'Вы не являетесь админом или модератором ни в одной из групп, к которым я привязан.', None
+        keyboard = [[]]
+        for group in groups:
+            keyboard[0].append(
+                {'name': f'group {group.id}', 'kwargs': {'arg': group.id}}
+            )
+        keyboard = await create_simple_keyboard(self, keyboard, callback=self.group_admin_settings_handler)
+        return 'Выберите группу.', keyboard
+
+    @on_message(filters.command('admin') & filters.private)
+    async def admin_handler(self, message):
+        text, keyboard = await self.get_admin_settings_message_data()
+        await message.reply(text, reply_markup=keyboard)
+
+    async def group_admin_settings_handler(self, keyboard, button, row_index, column_index):
+        stmt = select(GroupUserAssociation).where(
+            GroupUserAssociation.group_id == button.arg,
+            GroupUserAssociation.user_id == current_user.id
+        )
+        association = (await db.execute(stmt)).scalar()
+        keyboard = [[
+            {'name': 'Удалять сервисные сообщения о новых участниках', 'kwargs': {'is_checked': association.group.remove_joins, 'arg': 'remove_joins'}},
+            {'name': 'Удалять сервисные сообщения о вышедших участниках', 'kwargs': {'is_checked': association.group.remove_leaves, 'arg': 'remove_leaves'}}
+        ]]
+        if association.role == UserRole.ADMIN:
+            keyboard.append([
+                {'name': 'Управление администраторами и модераторами', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_admin_settings_staff_handler.__name__, 'arg': association.group.id}}
+            ])
+        keyboard.append([
+            {'name': 'Применить', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_admin_settings_apply_handler.__name__, 'arg': association.group.id}},
+            {'name': 'Назад', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_admin_settings_back_handler.__name__}}
+        ])
+        keyboard = await create_simple_check_box_keyboard(self, keyboard)
+        await current_callback_query.message.edit_text(f'Настройки группы {association.group_id}.', reply_markup=keyboard)
+
+    async def group_admin_settings_apply_handler(self, keyboard, button, column_index, row_index):
+        stmt = select(GroupUserAssociation).where(
+            GroupUserAssociation.group_id == button.arg,
+            GroupUserAssociation.user_id == current_user.id
+        )
+        association = (await db.execute(stmt)).scalar()
+        if not association.role in [UserRole.MODERATOR, UserRole.ADMIN]:
+            await current_callback_query.answer('Извините, вы уже не можете администрировать эту группу.', show_alert=True)
+            await current_callback_query.message.delete()
+        group = association.group
+        for row in keyboard:
+            for button in row:
+                if not isinstance(button, SimpleCheckBoxButton):
+                    continue
+                setattr(group, button.arg, button.is_checked)
+        await db.commit()
+        text, keyboard = await self.get_admin_settings_message_data()
+        await current_callback_query.message.edit_text('Настройки применены.\n' + text, reply_markup=keyboard)
+
+    async def group_admin_settings_back_handler(self, *args, **kwargs):
+        text, keyboard = await self.get_admin_settings_message_data()
+        await current_callback_query.message.edit_text(text, reply_markup=keyboard)
+
+    async def get_staff_message_data(self, group_id):
+        stmt = select(Group).where(
+            Group.id == group_id,
+        )
+        group = (await db.execute(stmt)).scalar()
+        keyboard = [[]]
+        for association in group.user_associations:
+            role = None
+            if association.role == UserRole.MODERATOR:
+                role = 'модератор'
+            if association.role == UserRole.ADMIN:
+                role = 'админ'
+            if not role:
+                continue
+            button = {
+                'name': f'Сместить пользователя {association.user.id} ({role})',
+                'button_class': GroupUserButton,
+                'callback': self.group_staff_to_user_handler,
+                'kwargs': {'group_id': association.group_id, 'member_id': association.user_id}
+            }
+            if len(keyboard[-1]) > 3:
+                keyboard.append([])
+            keyboard[-1].append(button)
+        keyboard.append([
+            {'name': 'Добавить администратора', 'callback': self.group_add_admin_handler, 'kwargs': {'arg': group.id}},
+            {'name': 'Добавить модератора', 'callback': self.group_add_moderator_handler, 'kwargs': {'arg': group.id}},
+        ])
+        keyboard.append([
+            {'name': 'Назад', 'callback': self.group_admin_settings_handler, 'kwargs': {'arg': group.id}}
+        ])
+        return 'Выберите действие', await create_simple_keyboard(self, keyboard)
+
+    async def group_admin_settings_staff_handler(self, keyboard, button, column_index, row_index):
+        text, keyboard = await self.get_staff_message_data(button.arg)
+        await current_callback_query.message.edit_text(text, reply_markup=keyboard)
+
+    async def group_staff_to_user_handler(self, keyboard, button, column_index, row_index):
+        stmt = select(GroupUserAssociation).where(
+            GroupUserAssociation.group_id == button.group_id,
+            GroupUserAssociation.user_id == button.member_id,
+        )
+        association = (await db.execute(stmt)).scalar()
+        keyboard = await create_simple_keyboard(
+            self,
+            [[
+                {
+                    'name': 'Да',
+                    'button_class': GroupUserButton,
+                    'callback': self.group_staff_to_user_apply_handler,
+                    'kwargs': {'group_id': association.group_id, 'member_id': association.user_id}
+                },
+                {'name': 'Нет', 'callback': self.group_admin_settings_staff_handler, 'kwargs': {'arg': association.group_id}}
+            ]]
+        )
+        await current_callback_query.message.edit_text(f'Понизить пользователя {association.user_id}?', reply_markup=keyboard)
+
+    async def group_staff_to_user_apply_handler(self, keyboard, button, column_index, row_index):
+        stmt = select(GroupUserAssociation).where(
+            GroupUserAssociation.group_id == button.group_id,
+            GroupUserAssociation.user_id == button.member_id,
+        )
+        association = (await db.execute(stmt)).scalar()
+        association.role = UserRole.USER
+        await db.commit()
+        text, keyboard = await self.get_staff_message_data(association.group_id)
+        await current_callback_query.message.edit_text('Пользователь понижен.\n' + text, reply_markup=keyboard)
+
+    async def group_add_admin_handler(self, keyboard, button, column_index, row_index):
+        await self.group_add_staff_member_handler(button, role=UserRole.ADMIN)
+
+    async def group_add_moderator_handler(self, keyboard, button, column_index, row_index):
+        await self.group_add_staff_member_handler(button, role=UserRole.MODERATOR)
+
+    async def group_add_staff_member_handler(self, button, role):
+        keyboard = await create_simple_keyboard(
+            self,
+            [[{'name': 'Назад', 'callback': self.group_admin_settings_staff_handler, 'kwargs': {'arg': button.arg}}]]
+        )
+        state = await AddStaffMemberForm.create(self, current_callback_query.message.chat)
+        state.staff_type = role
+        state.message_id = current_callback_query.message.id
+        state.group_id = button.arg
+        await state.set_current_state(AddStaffMemberForm.username)
+        await current_callback_query.message.edit_text(f'Отправьте мне ник пользователя, которого хотите сделать {"администратором" if role == UserRole.ADMIN else "модератором"}.', reply_markup=keyboard)
+
+    @on_message(filters.private, state=AddStaffMemberForm.username)
+    async def group_add_staff_handler(self, message):
+        username = message.text
+        await message.delete()
+        try:
+            user_list = await self.app.get_users([message.text])
+            user = user_list[0] if user_list else None
+        except pyrogram.errors.BadRequest:
+            user = None
+        if not user:
+            await self.app.edit_message_text(message.chat.id, current_state.message_id, 'Пользователь не найден.')
+            return
+        user = await self.get_or_create_user(user.id)
+        association = None
+        for a in user.group_associations:
+            if a.group_id == current_state.group_id:
+                association = a
+                break
+        if not association:
+            stmt = select(Group).where(Group.id == current_state.group_id)
+            group = (await db.execute(stmt)).scalar()
+            association = GroupUserAssociation(group=group, user=user)
+            db.add(association)
+        result = None
+        if current_state.staff_type == UserRole.ADMIN and association.role == UserRole.ADMIN:
+            result = 'Этот пользователь уже является админом.'
+        elif current_state.staff_type == UserRole.MODERATOR and association.role == UserRole.MODERATOR:
+            result = 'Этот пользователь уже является модератором.'
+        else:
+            association.role = current_state.staff_type
+            await db.commit()
+            result = 'Готово.'
+        text, keyboard = await self.get_staff_message_data(association.group_id)
+        await self.app.edit_message_text(message.chat.id, current_state.message_id, f'{result}\n{text}', reply_markup=keyboard)
+        await current_state.finish()
 
     @on_message(filters.command('start') & filters.group, group=group_manager.START_IN_GROUP)
     async def group_start_handler(self, message):
@@ -237,33 +426,6 @@ class Controller(BotController):
             except pyrogram.errors.Forbidden:
                 self.log.info('Не удалось удалить сервисное сообщение, вероятно, бот не является администратором в группе')
                 pass
-
-    @on_message(filters.private&filters.command('admin'))
-    async def admin_handler(self, message):
-        await message.reply('This feature is deprecated and will be removed.')
-        return
-        if current_user.role != UserRole.ADMIN:
-            return
-        if len(message.command) < 2:
-            await message.reply('Задайте username')
-            return
-        try:
-            user_list = await self.app.get_users([message.command[1]])
-            user = user_list[0] if user_list else None
-        except pyrogram.errors.BadRequest:
-            user = None
-        if not user:
-            await message.reply('Пользователь не найден')
-            return
-        user = await self.get_or_create_user(user.id)
-        if user.role == UserRole.ADMIN:
-            await message.reply('Этот пользователь уже является админом')
-            return
-        user.role = UserRole.ADMIN
-        async with self.db.begin() as db:
-            db.add(user)
-        await message.reply('Готово.')
-        self.log.info(f'Пользователь {current_user.user_id} сделал админом пользователя {user.user_id}')
 
     @on_message(filters.private&filters.command('stats'))
     async def stats_handler(self, message):
