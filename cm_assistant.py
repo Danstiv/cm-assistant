@@ -24,6 +24,13 @@ from tgbot.db import db
 from tgbot.group_manager import group_manager
 from tgbot.handler_decorators import on_message
 from tgbot.helpers import ContextVarWrapper
+from tgbot.keyboard import (
+    SimpleButton,
+    SimpleCheckBoxButton,
+    create_simple_check_box_keyboard,
+    create_simple_keyboard,
+    current_callback_query,
+)
 from tgbot.users import current_user
 
 group_manager.add_left_group('load_group')
@@ -67,11 +74,58 @@ class Controller(BotController):
             reply_markup=pyrogram.types.InlineKeyboardMarkup([[bind_button]])
         )
 
+    async def get_settings_message_data(self):
+        keyboard = [[]]
+        for group in current_user.groups:
+            keyboard[0].append(
+                {'name': f'group {group.id}', 'kwargs': {'arg': group.id}}
+            )
+        keyboard = await create_simple_keyboard(self, keyboard, callback=self.group_settings_handler)
+        return 'Выберите группу.', keyboard
+
     @on_message(filters.command('settings') & filters.private)
     async def settings_handler(self, message):
         if not current_user.groups:
             await message.reply('Вы не состоите ни в одной из групп, к которым я привязан.')
             return
+        text, keyboard = await self.get_settings_message_data()
+        await message.reply(text, reply_markup=keyboard)
+
+    async def group_settings_handler(self, keyboard, button, row_index, column_index):
+        stmt = select(GroupUserAssociation).where(
+            GroupUserAssociation.group_id == button.arg,
+            GroupUserAssociation.user_id == current_user.id
+        )
+        association = (await db.execute(stmt)).scalar()
+        keyboard = await create_simple_check_box_keyboard(
+            self,
+            [[
+                {'name': 'Подписаться на рассылки', 'kwargs': {'is_checked': association.subscribed_to_mailings, 'arg': 'subscribed_to_mailings'}}
+            ], [
+                {'name': 'Применить', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_settings_apply_handler.__name__, 'arg': association.group_id}},
+                {'name': 'Назад', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_settings_back_handler.__name__}},
+            ]]
+        )
+        await current_callback_query.message.edit_text(f'Настройки группы {association.group_id}.', reply_markup=keyboard)
+
+    async def group_settings_apply_handler(self, keyboard, button, column_index, row_index):
+        stmt = select(GroupUserAssociation).where(
+            GroupUserAssociation.group_id == button.arg,
+            GroupUserAssociation.user_id == current_user.id
+        )
+        association = (await db.execute(stmt)).scalar()
+        for row in keyboard:
+            for button in row:
+                if not isinstance(button, SimpleCheckBoxButton):
+                    continue
+                setattr(association, button.arg, button.is_checked)
+        await db.commit()
+        text, keyboard = await self.get_settings_message_data()
+        await current_callback_query.message.edit_text('Настройки применены.\n' + text, reply_markup=keyboard)
+
+    async def group_settings_back_handler(self, *args, **kwargs):
+        text, keyboard = await self.get_settings_message_data()
+        await current_callback_query.message.edit_text(text, reply_markup=keyboard)
 
     @on_message(filters.command('start') & filters.group, group=group_manager.START_IN_GROUP)
     async def group_start_handler(self, message):
