@@ -88,13 +88,22 @@ class StatesGroup(SQLAlchemyRowWrapper, metaclass=StatesGroupMeta):
         return cls(controller, state)
 
     async def set(self, value):
-        setattr(self.row, self.row.current_state, value)
+        setattr(self, self.current_state, value)
         columns = self.table.__table__.c
         for i, column in enumerate(columns):
-            if column.name == self.row.current_state:
-                self.row.current_state = columns[i+1].name if i < len(columns) -1 else None
+            if column.name == self.current_state:
+                self.current_state = columns[i+1].name if i < len(columns) -1 else None
                 break
         await self.save()
+
+    async def set_current_state(self, state):
+        self.current_state = state[1]
+        await self.save()
+
+    async def finish(self):
+        await db.delete(self.row)
+        del self.row
+        await db.commit()
 
 
 def generate_state_group(table, name=None):
