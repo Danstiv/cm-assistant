@@ -165,6 +165,9 @@ class Controller(BotController):
                 {'name': 'Управление администраторами и модераторами', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_admin_settings_staff_handler.__name__, 'arg': association.group.id}}
             ])
         keyboard.append([
+            {'name': 'Статистика', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_admin_settings_get_stats_handler.__name__, 'arg': association.group.id}},
+        ])
+        keyboard.append([
             {'name': 'Применить', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_admin_settings_apply_handler.__name__, 'arg': association.group.id}},
             {'name': 'Назад', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_admin_settings_back_handler.__name__}}
         ])
@@ -192,6 +195,36 @@ class Controller(BotController):
 
     async def group_admin_settings_back_handler(self, *args, **kwargs):
         text, keyboard = await self.get_admin_settings_message_data()
+        await current_callback_query.message.edit_text(text, reply_markup=keyboard)
+
+    async def group_admin_settings_get_stats_handler(self, keyboard, button, column_index, row_index):
+        stmt = select(GroupUserAssociation).where(
+            GroupUserAssociation.group_id == button.arg,
+            GroupUserAssociation.user_id == current_user.id
+        )
+        association = (await db.execute(stmt)).scalar()
+        group = association.group
+        date = datetime.datetime.now()-datetime.timedelta(days=7)
+        start_timestamp = int(date.timestamp())
+        joins = 0
+        leaves = 0
+        messages = 0
+        for event in group.events:
+            if event.type == EventType.JOIN:
+                joins += 1
+            elif event.type == EventType.LEAVE:
+                leaves += 1
+            else:
+                messages += 1
+        text = (
+            f'Статистика с {date:%Y-%m-%d %H:%M:%S}\n'
+            f'Новых пользователей: {joins}\n'
+            f'Вышедших пользователей: {leaves}\n'
+            f'Написано сообщений: {messages}'
+        )
+        keyboard = await create_simple_keyboard(self, [[
+            {'name': 'Назад', 'callback': self.group_admin_settings_handler, 'kwargs': {'arg': group.id}}
+        ]])
         await current_callback_query.message.edit_text(text, reply_markup=keyboard)
 
     async def get_staff_message_data(self, group_id):
@@ -410,6 +443,7 @@ class Controller(BotController):
         timestamp = int(time.time())
         for member in message.new_chat_members:
             event = Event(
+                group=current_group,
                 user_id=member.id,
                 time=timestamp,
                 type=EventType.JOIN
@@ -427,36 +461,35 @@ class Controller(BotController):
                 self.log.info('Не удалось удалить сервисное сообщение, вероятно, бот не является администратором в группе')
                 pass
 
-    @on_message(filters.private&filters.command('stats'))
-    async def stats_handler(self, message):
-        await message.reply('This feature is deprecated and will be removed.')
-        return
-        if current_user.role != UserRole.ADMIN:
+    @on_message(filters.left_chat_member)
+    async def leave_handler(self, message):
+        self.log.info(f'Начата обработка вышедшего участника')
+        if not current_group.is_set:
+            self.log.info('Группа неизвестна, обработка не будет произведена')
             return
-        date = datetime.datetime.now()-datetime.timedelta(days=7)
-        start_timestamp = int(date.timestamp())
-        joins_stmt = select(func.count()).select_from(Event).where(
-            Event.type==EventType.JOIN,
-            Event.time >= start_timestamp
+        event = Event(
+            group=current_group,
+            time=int(time.time()),
+            type=EventType.LEAVE,
+            user_id=message.left_chat_member.id
         )
-        messages_stmt = select(func.count()).select_from(Event).where(
-            Event.type==EventType.MESSAGE,
-            Event.time >= start_timestamp
-        )
-        async with self.db.begin() as db:
-            joins = (await db.execute(joins_stmt)).scalar()
-            messages = (await db.execute(messages_stmt)).scalar()
-        await message.reply(
-            f'Статистика с {date:%Y-%m-%d %H:%M:%S}\n'
-            f'Новых пользователей: {joins}\n'
-            f'Написано сообщений: {messages}'
-        )
+        db.add(event)
+        await db.commit()
+        if current_group.remove_leaves:
+            self.log.info('Будет выполнена попытка удалить сервисное сообщение о выходе участника')
+            try:
+                await message.delete()
+                self.log.info('Сервисное сообщение удалено')
+            except pyrogram.errors.Forbidden:
+                self.log.info('Не удалось удалить сервисное сообщение, вероятно, бот не является администратором в группе')
+                pass
 
     @on_message(filters.group & ~filters.service)
     async def group_message_handler(self, message):
         if not current_group.is_set or not current_user.is_set:
             return
         db.add(Event(
+            group=current_group,
             user_id=current_user.user_id,
             time=int(time.time()),
             type=EventType.MESSAGE
