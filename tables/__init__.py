@@ -2,7 +2,7 @@ import enum
 
 from sqlalchemy import Boolean, Column, Enum, ForeignKey, Integer, String
 from sqlalchemy.ext.associationproxy import association_proxy
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import backref, relationship
 
 from tgbot.db.tables import Base, User
 from tgbot.keyboard.mixins import ButtonMixin
@@ -48,6 +48,8 @@ class GroupUserAssociation(Base):
 class Event(Base):
     __tablename__ = 'event'
     id = Column(Integer, primary_key=True)
+    group_id = Column(Integer, ForeignKey('group.id'))
+    group = relationship('Group', backref=backref('events', lazy='selectin'))
     user_id = Column(Integer, nullable=False)
     time = Column(Integer, nullable=False)
     type = Column(Enum(EventType), nullable=False)
