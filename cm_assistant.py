@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import asyncio
 import datetime
 import os
@@ -63,6 +64,7 @@ class Controller(BotController):
             return
         db.add(current_group)
         await db.commit()
+        current_group.reset_context_var()
 
     @on_message(filters.command('start') & filters.private)
     async def start_handler(self, message):
