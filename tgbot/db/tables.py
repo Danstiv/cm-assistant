@@ -1,3 +1,4 @@
+import pyrogram
 from sqlalchemy import Boolean, Column, Integer, LargeBinary, String
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -34,6 +35,26 @@ class PyrogramButton(TableWithWindowMixin, Base):
     # callback_game: "Placeholder, currently holds no information."
     right_button = Column(Boolean, default=False)
     tab_index = Column(Integer)
+    simple_attrs = [
+        'text', 'callback_data',
+        'url', 'login_url',
+        'user_id', 'switch_inline_query',
+        'switch_inline_query_current_chat'
+    ]
+
+    def set_data(self, button):
+        for attr in self.simple_attrs:
+            setattr(self, attr, getattr(button, attr))
+        if button.web_app:
+            self.web_app_url = button.web_app.url
+
+    def get_button(self):
+        data = {}
+        for attr in self.simple_attrs:
+            data[attr] = getattr(self, attr)
+        if self.web_app_url:
+            data['web_app'] = pyrogram.types.WebAppInfo(url=self.web_app_url)
+        return pyrogram.types.InlineKeyboardButton(**data)
 
 
 class SimpleButton(ButtonMixin, Base):

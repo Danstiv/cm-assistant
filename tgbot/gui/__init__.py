@@ -186,18 +186,16 @@ class BaseKeyboard:
                     return
 
     async def save(self):
-        tab_index = self.tab.window.row.current_tab_index
         for row in self.buttons:
             for i, button in enumerate(row):
                 if isinstance(button, pyrogram.types.InlineKeyboardButton):
-                    data = json.loads(str(button))
-                    del data['_']
-                    db_row = tables.PyrogramButton(**data)
+                    db_row = tables.PyrogramButton()
+                    db_row.set_data(button)
                 else:
                     db_row = tables.PyrogramButton(text=button.text, callback_data=button.row.callback_data)
                 if i == len(row)-1:
                     db_row.right_button = True
-                db_row.tab_index = tab_index
+                db_row.tab_index = self.tab.window.row.current_tab_index
                 db_row.window_id = self.tab.window.row.id
                 db.add(db_row)
 
@@ -214,7 +212,7 @@ class BaseKeyboard:
         db_buttons = (await db.execute(stmt)).scalars()
         buttons = [[]]
         for db_button in db_buttons:
-            raise NotImplementedError
+            button = db_button.get_button()
             buttons[-1].append(button)
             if db_button.right_button:
                 buttons.append([])
