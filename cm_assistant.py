@@ -11,7 +11,6 @@ from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus
 from sqlalchemy import func, select
 
-from keyboard import GroupUserButton
 from tables import (
     Event,
     EventType,
@@ -20,21 +19,13 @@ from tables import (
     User,
     UserRole,
 )
-from states import AddStaffMemberForm
+from gui.admin import AdminWindow
 import texts
 from tgbot import BotController
 from tgbot.db import db
 from tgbot.group_manager import group_manager
 from tgbot.handler_decorators import on_message
 from tgbot.helpers import ContextVarWrapper
-from tgbot.keyboard import (
-    SimpleButton,
-    SimpleCheckBoxButton,
-    create_simple_check_box_keyboard,
-    create_simple_keyboard,
-    current_callback_query,
-)
-from tgbot.states import current_state
 from tgbot.users import current_user
 
 group_manager.add_left_group('load_group')
@@ -131,73 +122,12 @@ class Controller(BotController):
         text, keyboard = await self.get_settings_message_data()
         await current_callback_query.message.edit_text(text, reply_markup=keyboard)
 
-    async def get_admin_settings_message_data(self):
-        groups = []
-        for association in current_user.group_associations:
-            if not association.role in [UserRole.MODERATOR, UserRole.ADMIN]:
-                continue
-            groups.append(association.group)
-        if not groups:
-            return 'Вы не являетесь админом или модератором ни в одной из групп, к которым я привязан.', None
-        keyboard = [[]]
-        for group in groups:
-            keyboard[0].append(
-                {'name': f'group {group.id}', 'kwargs': {'arg': group.id}}
-            )
-        keyboard = await create_simple_keyboard(self, keyboard, callback=self.group_admin_settings_handler)
-        return 'Выберите группу.', keyboard
-
     @on_message(filters.command('admin') & filters.private)
     async def admin_handler(self, message):
-        text, keyboard = await self.get_admin_settings_message_data()
-        await message.reply(text, reply_markup=keyboard)
-
-    async def group_admin_settings_handler(self, keyboard, button, row_index, column_index):
-        stmt = select(GroupUserAssociation).where(
-            GroupUserAssociation.group_id == button.arg,
-            GroupUserAssociation.user_id == current_user.id
-        )
-        association = (await db.execute(stmt)).scalar()
-        keyboard = [[
-            {'name': 'Удалять сервисные сообщения о новых участниках', 'kwargs': {'is_checked': association.group.remove_joins, 'arg': 'remove_joins'}},
-            {'name': 'Удалять сервисные сообщения о вышедших участниках', 'kwargs': {'is_checked': association.group.remove_leaves, 'arg': 'remove_leaves'}}
-        ]]
-        if association.role == UserRole.ADMIN:
-            keyboard.append([
-                {'name': 'Управление администраторами и модераторами', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_admin_settings_staff_handler.__name__, 'arg': association.group.id}}
-            ])
-        keyboard.append([
-            {'name': 'Статистика', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_admin_settings_get_stats_handler.__name__, 'arg': association.group.id}},
-        ])
-        keyboard.append([
-            {'name': 'Применить', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_admin_settings_apply_handler.__name__, 'arg': association.group.id}},
-            {'name': 'Назад', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_admin_settings_back_handler.__name__}}
-        ])
-        keyboard = await create_simple_check_box_keyboard(self, keyboard)
-        await current_callback_query.message.edit_text(f'Настройки группы {association.group_id}.', reply_markup=keyboard)
-
-    async def group_admin_settings_apply_handler(self, keyboard, button, column_index, row_index):
-        stmt = select(GroupUserAssociation).where(
-            GroupUserAssociation.group_id == button.arg,
-            GroupUserAssociation.user_id == current_user.id
-        )
-        association = (await db.execute(stmt)).scalar()
-        if not association.role in [UserRole.MODERATOR, UserRole.ADMIN]:
-            await current_callback_query.answer('Извините, вы уже не можете администрировать эту группу.', show_alert=True)
-            await current_callback_query.message.delete()
-        group = association.group
-        for row in keyboard:
-            for button in row:
-                if not isinstance(button, SimpleCheckBoxButton):
-                    continue
-                setattr(group, button.arg, button.is_checked)
+        window = AdminWindow(self, message.chat.id)
+        await window.build()
+        await window.render()
         await db.commit()
-        text, keyboard = await self.get_admin_settings_message_data()
-        await current_callback_query.message.edit_text('Настройки применены.\n' + text, reply_markup=keyboard)
-
-    async def group_admin_settings_back_handler(self, *args, **kwargs):
-        text, keyboard = await self.get_admin_settings_message_data()
-        await current_callback_query.message.edit_text(text, reply_markup=keyboard)
 
     async def group_admin_settings_get_stats_handler(self, keyboard, button, column_index, row_index):
         stmt = select(GroupUserAssociation).where(
@@ -314,7 +244,7 @@ class Controller(BotController):
         await state.set_current_state(AddStaffMemberForm.username)
         await current_callback_query.message.edit_text(f'Отправьте мне ник пользователя, которого хотите сделать {"администратором" if role == UserRole.ADMIN else "модератором"}.', reply_markup=keyboard)
 
-    @on_message(filters.private, state=AddStaffMemberForm.username)
+    # @on_message(filters.private, state=AddStaffMemberForm.username)
     async def group_add_staff_handler(self, message):
         username = message.text
         await message.delete()
