@@ -17,7 +17,7 @@ from tgbot import (
 )
 from tgbot.core import TGBotCoreMixin
 from tgbot.handler_decorators import get_handlers
-from tgbot.keyboard import TGBotKeyboardMixin
+from tgbot.gui import TGBotGUIMixin
 from tgbot.messages import TGBotMessagesMixin
 from tgbot.users import TGBotUsersMixin
 
@@ -27,7 +27,7 @@ dotenv.load_dotenv()
 class BotController(
     TGBotCoreMixin,
     db.TGBotDBMixin,
-    TGBotKeyboardMixin,
+    TGBotGUIMixin,
     TGBotMessagesMixin,
     TGBotUsersMixin,
 ):

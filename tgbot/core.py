@@ -2,6 +2,8 @@ import asyncio
 import logging
 import logging.handlers
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from tgbot.logging_helpers import Formatter, WarningErrorHandler
 from tgbot.helpers import EmptyContextVarException
 from tgbot.users import current_user
@@ -13,7 +15,7 @@ def log_record_factory(*args, **kwargs):
 	record = old_log_record_factory(*args, **kwargs)
 	try:
 		record.user_id = current_user.user_id
-	except EmptyContextVarException:
+	except (EmptyContextVarException, SQLAlchemyError):
 		record.user_id = 0
 	return record
 
