@@ -13,8 +13,10 @@ class Window(Base):
     id = Column(Integer, primary_key=True)
     chat_id = Column(Integer, nullable=False)
     user_id = Column(Integer, nullable=False, default=DEFAULT_USER_ID)
+    window_class_crc32 = Column(LargeBinary(4), nullable=False)
     message_id = Column(Integer, nullable=True)
     current_tab_index = Column(Integer)
+    input_required = Column(Boolean, default=False)
 
 
 class Tab(TabMixin, Base):

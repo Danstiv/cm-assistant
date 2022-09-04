@@ -24,6 +24,7 @@ class TabMixin(TableWithWindowMixin):
     id = Column(Integer, primary_key=True)
     index_in_window = Column(Integer)
     text = Column(String)
+    current_input_field_index = Column(Integer)
 
 
 class BaseButtonMixin(TableWithWindowMixin):

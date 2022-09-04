@@ -2,7 +2,8 @@ import binascii
 import uuid
 
 import pyrogram
-from sqlalchemy import delete, or_, select
+from pyrogram import filters
+from sqlalchemy import delete, desc, or_, select
 
 from tgbot.constants import DEFAULT_USER_ID
 from tgbot.db import db, tables
@@ -13,8 +14,9 @@ from tgbot.gui.exceptions import (
     PermissionError,
     ReconstructionError,
 )
-from tgbot.handler_decorators import on_callback_query
+from tgbot.handler_decorators import on_callback_query, on_message
 from tgbot.helpers import ContextVarWrapper
+from tgbot.users import current_user
 
 current_callback_query = ContextVarWrapper('current_callback_query')
 CALLBACK_QUERY_SIGNATURE = chr(128021).encode()
@@ -52,17 +54,29 @@ class Window(metaclass=WindowMeta):
         self.controller = controller
         self.chat_id = chat_id
         self.user_id = user_id
+        self.swap = False
 
     async def build(self, *args, **kwargs):
         self.row = tables.Window(chat_id=self.chat_id, user_id=self.user_id)
+        self.row.window_class_crc32 = self.crc32
         self.current_tab = self.tabs[0](self)
         self.row.current_tab_index = 0
         db.add(self.row)
         await db.flush()
         await self.current_tab.build(*args, **kwargs)
 
+    def schedule_swap(self):
+        self.swap = True
+
     async def render(self):
         text, keyboard = await self.current_tab.render()
+        if self.current_tab.input_fields:
+            self.row.input_required = True
+        else:
+            self.row.input_required = False
+        if self.swap and self.row.message_id:
+            await self.controller.app.delete_messages(self.row.chat_id, self.row.message_id)
+            self.row.message_id = None
         if not self.row.message_id:
             message = await self.controller.send_message(text, self.row.chat_id, reply_markup=keyboard, blocking=True)
             self.row.message_id = message.id
@@ -74,18 +88,19 @@ class Window(metaclass=WindowMeta):
                 pass
 
     @classmethod
-    async def reconstruct(cls, controller, chat_id, window_id, message=None):
-        stmt = select(tables.Window).where(
-            tables.Window.id==window_id,
-            tables.Window.chat_id==chat_id,
-        )
-        row = (await db.execute(stmt)).scalar()
+    async def reconstruct(cls, controller, chat_id, window_id, message=None, row=None):
+        if not row:
+            stmt = select(tables.Window).where(
+                tables.Window.id==window_id,
+                tables.Window.chat_id==chat_id,
+            )
+            row = (await db.execute(stmt)).scalar()
         if row is None:
             raise NoWindowError
         if row.user_id != DEFAULT_USER_ID and row.user_id != current_user.user_id:
             raise PermissionError
         if message is None:
-            message = await controller.app.get_messages(chat_id, window.row.message_id)
+            message = await controller.app.get_messages(chat_id, row.message_id)
             # "A message can be empty in case it was deleted or you tried to retrieve a message that doesn’t exist yet."
             if message.empty:
                 await db.delete(row)
@@ -102,7 +117,10 @@ class Window(metaclass=WindowMeta):
     async def handle_button_activation(self):
         await self.current_tab.handle_button_activation()
 
-    async def switch_tab(self, new_tab, *args, save_current_tab=True, **kwargs):
+    async def process_input(self, text):
+        await self.current_tab.process_input(text)
+
+    async def switch_tab(self, new_tab, *args, save_current_tab=False, **kwargs):
         try:
             new_tab_index = self.tabs.index(new_tab)
         except ValueError:
@@ -116,6 +134,7 @@ class Window(metaclass=WindowMeta):
         restored = await self.current_tab.restore()
         if not restored:
             await self.current_tab.build(*args, **kwargs)
+        return self.current_tab
 
 
 class BaseKeyboard:
@@ -296,10 +315,20 @@ class CheckBoxButton(ButtonWithCallback):
         await self.callback(self.row.is_checked, self.row.arg)
 
 
+class InputField:
+
+    def __init__(self, name, text=None, method_name=None):
+        self.name = name
+        self.text = text
+        self.method_name = method_name or f'process_{name}'
+
+    # Validation probably will be implemented here later
+
+
 class BaseTab:
     table = tables.Tab
-    text = None
     keyboard_class = SimpleKeyboard
+    input_fields = []
 
     def __init__(self, window):
         self.window = window
@@ -308,18 +337,25 @@ class BaseTab:
     def set_text(self, text):
         self.row.text = text
 
-    async def build(self, *args, **kwargs):
-        self.row = self.table(*args, window=self.window.row, **kwargs)
-        self.row.index_in_window = self.window.row.current_tab_index
-        if self.text is not None:
-            self.row.text = self.text
-        db.add(self.row)
+    def get_text(self):
+        if self.row.text:
+            return self.row.text
+        return '.'
 
     async def get_text_data(self):
         return {}
 
+    async def build(self, *args, **kwargs):
+        self.row = self.table(*args, window=self.window.row, **kwargs)
+        self.row.index_in_window = self.window.row.current_tab_index
+        if self.input_fields:
+            self.row.current_input_field_index = 0
+            if self.input_fields[self.row.current_input_field_index].text:
+                self.set_text(self.input_fields[self.row.current_input_field_index].text)
+        db.add(self.row)
+
     async def render(self):
-        text = self.row.text.format(**await self.get_text_data())
+        text = self.get_text().format(**await self.get_text_data())
         keyboard = await self.keyboard.render()
         return text, keyboard
 
@@ -335,6 +371,28 @@ class BaseTab:
 
     async def handle_button_activation(self):
         await self.keyboard.handle_button_activation()
+
+    async def process_input(self, text):
+        callback = getattr(self, self.input_fields[self.row.current_input_field_index].method_name)
+        await callback(text)
+
+    def switch_input_field(self, field_name=None, previous=False, next=True):
+        if name is not None:
+            for i, field in enumerate(self.input_fields):
+                if field.name == name:
+                    self.row.current_input_field_index = i
+                    return
+            raise NameError(f'Field "{name}" not found')
+        if previous == next:
+            raise ValueError(f'Previous should not be equal to next')
+        if previous:
+            if self.row.current_input_field_index == 0:
+                raise ValueError('This is the first input field')
+            self.row.current_input_field_index -= 1
+        else:
+            if self.row.current_input_field_index == len(self.input_fields)-1:
+                raise ValueError('This is the last input field')
+            self.row.current_input_field_index += 1
 
     async def save(self):
         await self.keyboard.save()
@@ -392,3 +450,22 @@ class TGBotGUIMixin:
     @on_callback_query(group=group_manager.RESET_CALLBACK_QUERY_CONTEXT)
     def callback_query_reset_handler(self, callback_query):
         current_callback_query.reset_context_var()
+
+    @on_message(filters.text, group=group_manager.PROCESS_INPUT)
+    async def process_input(self, message):
+        stmt = select(tables.Window).where(
+            tables.Window.chat_id == message.chat.id,
+            or_(tables.Window.user_id == DEFAULT_USER_ID, tables.Window.user_id == current_user.user_id),
+            tables.Window.input_required == True
+        ).order_by(
+            desc(tables.Window.id)
+        )
+        window = (await db.execute(stmt)).scalar()
+        if not window:
+            message.continue_propagation()
+        window_class = window_registry[window.window_class_crc32]
+        window = await window_class.reconstruct(self, message.chat.id, window.id, row=window)
+        await window.process_input(message.text)
+        await window.render()
+        await db.commit()
+        message.stop_propagation()
