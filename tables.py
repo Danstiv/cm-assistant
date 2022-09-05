@@ -55,6 +55,14 @@ class Event(Base):
     type = Column(Enum(EventType), nullable=False)
 
 
-class GroupTab(TabMixin, Base):
-    __tablename__ = 'group_user_tab'
+class GroupTabMixin(TabMixin):
     group_id = Column(Integer, nullable=False)
+
+
+class GroupTab(GroupTabMixin, Base):
+    __tablename__ = 'group_tab'
+
+
+class GroupAddStaffTab(GroupTabMixin, Base):
+    __tablename__ = 'group_add_staff_tab'
+    staff_type = Column(Enum(UserRole), nullable=False)
