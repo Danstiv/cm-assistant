@@ -143,9 +143,12 @@ class BaseKeyboard:
         self.tab = tab
         self.buttons = []
 
+    def add_row(self, *buttons):
+        self.buttons.append(list(buttons))
+
     def add_button(self, button):
         if not self.buttons:
-            self.buttons.append([])
+            self.add_row()
         self.buttons[-1].append(button)
 
     async def render(self):
@@ -269,52 +272,6 @@ class BaseButton(metaclass=ButtonMeta):
         await db.delete(self.row)
 
 
-class ButtonWithCallback(BaseButton):
-    def __init__(self, *args, callback=None, **kwargs):
-        if callback is not None:
-            kwargs['callback_name'] = callback.__name__
-        super().__init__(*args, **kwargs)
-
-    @property
-    def callback(self):
-        return getattr(self.keyboard.tab, self.row.callback_name)
-
-
-class SimpleButton(ButtonWithCallback):
-    table = tables.SimpleButton
-
-    async def handle_button_activation(self, row_index, column_index):
-        await self.callback(self.row.arg)
-
-
-class CheckBoxButton(ButtonWithCallback):
-    table = tables.CheckBoxButton
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if 'row' not in kwargs:  # Creation
-            self.row.text = self.text
-        else:  # Reconstruction
-            self.text = self.row.text
-
-    def get_column_value_or_default(self, name):
-        value = getattr(self.row, name)
-        if value is not None:
-            return value
-        return self.row.__table__.c[name].default.arg
-
-    async def render(self):
-        await self.db_render()
-        prefix = self.get_column_value_or_default('is_unchecked_prefix')
-        if self.row.is_checked:
-            prefix = self.get_column_value_or_default('is_checked_prefix')
-        return pyrogram.types.InlineKeyboardButton(prefix + self.text, callback_data=self.row.callback_data)
-
-    async def handle_button_activation(self, row_index, column_index):
-        self.row.is_checked = not self.row.is_checked
-        await self.callback(self.row.is_checked, self.row.arg)
-
-
 class InputField:
 
     def __init__(self, name, text=None, method_name=None):
@@ -332,7 +289,7 @@ class BaseTab:
 
     def __init__(self, window):
         self.window = window
-        self.keyboard = self.keyboard_class(self)
+        self.keyboard = self.get_keyboard()
 
     def set_text(self, text):
         self.row.text = text
@@ -344,6 +301,9 @@ class BaseTab:
 
     async def get_text_data(self):
         return {}
+
+    def get_keyboard(self):
+        return self.keyboard_class(self)
 
     async def build(self, *args, **kwargs):
         self.row = self.table(*args, window=self.window.row, **kwargs)

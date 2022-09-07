@@ -4,12 +4,11 @@ from sqlalchemy import select
 from tgbot.db import db
 from tgbot.gui import (
     BaseTab,
-    CheckBoxButton,
-    current_callback_query,
     InputField,
-    SimpleButton,
     Window
 )
+from tgbot.gui.buttons import CheckBoxButton, SimpleButton
+from tgbot.gui.keyboards import GridKeyboard
 from tgbot.users import current_user
 import tables
 from tables import (
@@ -37,6 +36,9 @@ class GroupTab(BaseTab):
 
 class GroupSelectionTab(BaseTab):
 
+    def get_keyboard(self):
+        return GridKeyboard(self, width=2)
+
     async def build(self, *args, **kwargs):
         await super().build(*args, **kwargs)
         groups = []
@@ -49,8 +51,9 @@ class GroupSelectionTab(BaseTab):
             return
         self.set_text('Выберите группу.')
         for group in groups:
+            group_title = (await self.window.controller.app.get_chat(group.group_id)).title
             self.keyboard.add_button(SimpleButton(
-                f'group {group.id}',
+                group_title,
                 arg=group.id,
                 callback=self.on_group_btn
             ))
@@ -62,12 +65,13 @@ class GroupSelectionTab(BaseTab):
 class GroupAdminSettingsTab(GroupTab):
 
     async def get_text_data(self):
-        return {'group_name': self.row.group_id}
+        return {'group_name': (await self.window.controller.app.get_chat((await self.get_association_object()).group.group_id)).title}
 
     async def build(self, *args, **kwargs):
         await super().build(*args, **kwargs)
         association = await self.get_association_object()
         self.set_text('Настройки группы {group_name}')
+        self.keyboard.add_row()
         self.keyboard.add_button(CheckBoxButton(
             'Удалять джойны',
             is_checked=association.group.remove_joins,
@@ -79,11 +83,11 @@ class GroupAdminSettingsTab(GroupTab):
             callback=self.on_remove_leaves_cb
         ))
         if association.role == UserRole.ADMIN:
-            self.keyboard.add_button(SimpleButton(
+            self.keyboard.add_row(SimpleButton(
                 'Админы и модераторы',
                 callback=self.on_staff_btn
             ))
-        self.keyboard.add_button(SimpleButton('Назад', callback=self.on_back_btn))
+        self.keyboard.add_row(SimpleButton('Назад', callback=self.on_back_btn))
 
     async def on_remove_joins_cb(self, state, arg):
         group = (await self.get_association_object()).group
@@ -109,6 +113,9 @@ class GroupAdminSettingsTab(GroupTab):
 
 class GroupStaffTab(GroupTab):
 
+    def get_keyboard(self):
+        return GridKeyboard(self, width=3)
+
     async def build(self, *args, **kwargs):
         await super().build(*args, **kwargs)
         stmt = select(GroupUserAssociation).where(
@@ -116,20 +123,33 @@ class GroupStaffTab(GroupTab):
             GroupUserAssociation.role.in_([UserRole.MODERATOR, UserRole.ADMIN])
         )
         associations = (await db.execute(stmt)).scalars()
+        data = []
         for association in associations:
             role = None
             if association.role == UserRole.MODERATOR:
                 role = 'модератор'
             else:
                 role = 'админ'
+            data.append({'role': role, 'id': association.user_id, 'user_id': association.user.user_id})
+        users = await self.window.controller.app.get_users([i['user_id'] for i in data])
+        usernames = []
+        for user in users:
+            username_components = [user.first_name]
+            if user.last_name:
+                username_components.append(user.last_name)
+            if user.username:
+                username_components.append('@' + user.username)
+            usernames.append(' '.join(username_components))
+        for i, username in zip(data, usernames):
             self.keyboard.add_button(SimpleButton(
-                f'Сместить пользователя {association.user.id} ({role})',
+                f'Сместить пользователя {username} ({i["role"]})',
                 callback=self.on_staff_to_user_btn,
-                arg=association.user_id
+                arg=i['id']
             ))
+        self.keyboard.add_row()
         self.keyboard.add_button(SimpleButton('Добавить админа', callback=self.on_add_staff_btn, arg='admin'))
         self.keyboard.add_button(SimpleButton('Добавить модератора', callback=self.on_add_staff_btn, arg='moderator'))
-        self.keyboard.add_button(SimpleButton('Назад', callback=self.on_back_btn))
+        self.keyboard.add_row(SimpleButton('Назад', callback=self.on_back_btn))
         self.set_text('Выберите действие.')
 
     async def on_staff_to_user_btn(self, arg):
@@ -172,11 +192,11 @@ class GroupAddStaffTab(GroupTab):
     table = tables.GroupAddStaffTab
     input_fields = [InputField(
         'username',
-        text='Отправьте мне ник пользователя, которого хотите сделать {staff_type}.'
+        text='Отправьте мне ник пользователя, которому хотите выдать роль {role}.'
     )]
 
     async def get_text_data(self):
-        return {'staff_type': 'администратором' if self.row.staff_type == UserRole.ADMIN else 'модератором'}
+        return {'role': 'админ' if self.row.staff_type == UserRole.ADMIN else 'модератор'}
 
     async def build(self, *args, **kwargs):
         await super().build(*args, **kwargs)
