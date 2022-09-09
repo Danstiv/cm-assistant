@@ -80,6 +80,7 @@ class BotController(
             bot_token=self.bot_token,
             workdir='.',
             sleep_threshold=0,
+            parse_mode=pyrogram.enums.ParseMode.HTML,
         )
         await self.initialize()
         await self.app.start()

@@ -3,7 +3,13 @@ from sqlalchemy import Boolean, Column, Integer, LargeBinary, String
 from sqlalchemy.orm import declarative_base, relationship
 
 from tgbot.constants import DEFAULT_USER_ID
-from tgbot.gui.mixins import ButtonMixin, CheckBoxButtonMixin, TabMixin, TableWithWindowMixin
+from tgbot.gui.mixins import (
+    ButtonMixin,
+    CheckBoxButtonMixin,
+    TabMixin,
+    TableWithWindowMixin,
+    TextMixin,
+)
 
 Base = declarative_base()
 
@@ -21,6 +27,10 @@ class Window(Base):
 
 class Tab(TabMixin, Base):
     __tablename__ = 'tab'
+
+
+class Text(TextMixin, Base):
+    __tablename__ = 'text'
 
 
 class PyrogramButton(TableWithWindowMixin, Base):

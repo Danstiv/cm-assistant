@@ -27,6 +27,14 @@ class TabMixin(TableWithWindowMixin):
     current_input_field_index = Column(Integer)
 
 
+class TextMixin(TableWithWindowMixin):
+    id = Column(Integer, primary_key=True)
+    tab_id = Column(Integer)
+    header = Column(String)
+    body = Column(String)
+    input_field_text = Column(String)
+
+
 class BaseButtonMixin(TableWithWindowMixin):
     id = Column(Integer, primary_key=True)
     callback_data = Column(LargeBinary(64), unique=True, nullable=False)

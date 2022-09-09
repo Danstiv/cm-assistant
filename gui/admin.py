@@ -37,7 +37,7 @@ class GroupTab(BaseTab):
 class GroupSelectionTab(BaseTab):
 
     def get_keyboard(self):
-        return GridKeyboard(self, width=2)
+        return GridKeyboard(self, width=1)
 
     async def build(self, *args, **kwargs):
         await super().build(*args, **kwargs)
@@ -47,9 +47,9 @@ class GroupSelectionTab(BaseTab):
                 continue
             groups.append(association.group)
         if not groups:
-            self.set_text('Вы не являетесь админом или модератором ни в одной из групп, к которым я привязан.')
+            self.text.set_body('Вы не являетесь админом или модератором ни в одной из групп, к которым я привязан.')
             return
-        self.set_text('Выберите группу.')
+        self.text.set_body('Выберите группу.')
         for group in groups:
             group_title = (await self.window.controller.app.get_chat(group.group_id)).title
             self.keyboard.add_button(SimpleButton(
@@ -63,6 +63,7 @@ class GroupSelectionTab(BaseTab):
 
 
 class GroupAdminSettingsTab(GroupTab):
+    rerender_text = False
 
     async def get_text_data(self):
         return {'group_name': (await self.window.controller.app.get_chat((await self.get_association_object()).group.group_id)).title}
@@ -70,7 +71,7 @@ class GroupAdminSettingsTab(GroupTab):
     async def build(self, *args, **kwargs):
         await super().build(*args, **kwargs)
         association = await self.get_association_object()
-        self.set_text('Настройки группы {group_name}')
+        self.text.set_body('Настройки группы {group_name}')
         self.keyboard.add_row()
         self.keyboard.add_button(CheckBoxButton(
             'Удалять джойны',
@@ -114,7 +115,7 @@ class GroupAdminSettingsTab(GroupTab):
 class GroupStaffTab(GroupTab):
 
     def get_keyboard(self):
-        return GridKeyboard(self, width=3)
+        return GridKeyboard(self, width=2)
 
     async def build(self, *args, **kwargs):
         await super().build(*args, **kwargs)
@@ -150,7 +151,7 @@ class GroupStaffTab(GroupTab):
         self.keyboard.add_button(SimpleButton('Добавить админа', callback=self.on_add_staff_btn, arg='admin'))
         self.keyboard.add_button(SimpleButton('Добавить модератора', callback=self.on_add_staff_btn, arg='moderator'))
         self.keyboard.add_row(SimpleButton('Назад', callback=self.on_back_btn))
-        self.set_text('Выберите действие.')
+        self.text.set_body('Выберите действие.')
 
     async def on_staff_to_user_btn(self, arg):
         await self.custom_switch_tab(GroupStaffToUserConfirmTab, user_id=arg)
@@ -169,7 +170,7 @@ class GroupStaffToUserConfirmTab(GroupTab):
         # This tab is needed for a relatively simple action,
         # therefore, using GroupTab will be enough, and the user_id will be just passed to the button.
         await super().build(*args, **kwargs)
-        self.set_text(f'Понизить пользователя {user_id}?')
+        self.text.set_body(f'Понизить пользователя {user_id}?')
         self.keyboard.add_button(SimpleButton('Да', callback=self.on_btn, arg=user_id))
         self.keyboard.add_button(SimpleButton('Нет', callback=self.on_btn))
 
@@ -183,16 +184,18 @@ class GroupStaffToUserConfirmTab(GroupTab):
             association = (await db.execute(stmt)).scalar()
             association.role = UserRole.USER
             db.add(association)
-            result = 'Пользователь понижен.\n'
+            result = 'Пользователь понижен.'
+        else:
+            result = 'Действие отменено.'
         tab = await self.custom_switch_tab(GroupStaffTab)
-        tab.set_text(result + tab.get_text())
+        tab.text.set_header(result)
 
 
 class GroupAddStaffTab(GroupTab):
     table = tables.GroupAddStaffTab
     input_fields = [InputField(
         'username',
-        text='Отправьте мне ник пользователя, которому хотите выдать роль {role}.'
+        text='Отправьте мне ник пользователя, которому хотите выдать роль "{role}".'
     )]
 
     async def get_text_data(self):
@@ -203,7 +206,8 @@ class GroupAddStaffTab(GroupTab):
         self.keyboard.add_button(SimpleButton('Назад', callback=self.on_back_btn))
 
     async def on_back_btn(self, arg):
-        await self.custom_switch_tab(GroupStaffTab)
+        tab = await self.custom_switch_tab(GroupStaffTab)
+        tab.text.set_header('Действие отменено.')
 
     async def process_username(self, username):
         try:
@@ -213,7 +217,7 @@ class GroupAddStaffTab(GroupTab):
             user = None
         self.window.schedule_swap()
         if not user:
-            self.set_text('Пользователь не найден.\n' + self.input_fields[0].text)
+            self.text.set_header('Пользователь не найден.')
             return
         user = await self.window.controller.get_or_create_user(user.id)
         association = None
@@ -235,7 +239,7 @@ class GroupAddStaffTab(GroupTab):
             association.role = self.row.staff_type
             result = 'Готово.'
         tab = await self.custom_switch_tab(GroupStaffTab)
-        tab.set_text(f'{result}\n{tab.get_text()}')
+        tab.text.set_header(result)
 
 
 class AdminWindow(Window):
