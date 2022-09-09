@@ -12,12 +12,12 @@ LOG_MAX_SIZE = 10*2**20  # 10MB
 LOG_MAX_BACKUPS = 9
 old_log_record_factory = logging.getLogRecordFactory()
 def log_record_factory(*args, **kwargs):
-	record = old_log_record_factory(*args, **kwargs)
-	try:
-		record.user_id = current_user.user_id
-	except (EmptyContextVarException, SQLAlchemyError):
-		record.user_id = 0
-	return record
+    record = old_log_record_factory(*args, **kwargs)
+    try:
+        record.username = current_user.pyrogram_user.log_name
+    except (EmptyContextVarException, SQLAlchemyError):
+        record.username = 'Василий'
+    return record
 
 
 class TGBotCoreMixin:
@@ -42,7 +42,7 @@ class TGBotCoreMixin:
         file_handler.setLevel(logging.DEBUG)
         detailed_formatter = Formatter(
             '%(asctime)s - %(levelname)s - %(module)s'
-            '.%(funcName)s (%(lineno)d) #%(user_id)d\n%(message)s'
+            '.%(funcName)s (%(lineno)d) | %(username)s\n%(message)s'
         )
         file_handler.setFormatter(detailed_formatter)
         self.log.addHandler(file_handler)

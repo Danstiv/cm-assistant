@@ -20,6 +20,7 @@ from tgbot.handler_decorators import get_handlers
 from tgbot.gui import TGBotGUIMixin
 from tgbot.messages import TGBotMessagesMixin
 from tgbot.users import TGBotUsersMixin
+from tgbot.wrappers import apply_wrappers
 
 dotenv.load_dotenv()
 
@@ -40,6 +41,7 @@ class BotController(
         self.dev_ids = [int(i) for i in self.dev_ids.split(',')]
         self.bot_name = bot_name
         self.app = None
+        apply_wrappers()
         if sys.platform != 'win32' and use_uvloop:
             if not uvloop:
                 raise ValueError('uvloop is not installed')

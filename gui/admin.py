@@ -133,14 +133,7 @@ class GroupStaffTab(GroupTab):
                 role = 'админ'
             data.append({'role': role, 'id': association.user_id, 'user_id': association.user.user_id})
         users = await self.window.controller.app.get_users([i['user_id'] for i in data])
-        usernames = []
-        for user in users:
-            username_components = [user.first_name]
-            if user.last_name:
-                username_components.append(user.last_name)
-            if user.username:
-                username_components.append('@' + user.username)
-            usernames.append(' '.join(username_components))
+        usernames = [u.full_name for u in users]
         for i, username in zip(data, usernames):
             self.keyboard.add_button(SimpleButton(
                 f'Сместить пользователя {username} ({i["role"]})',
