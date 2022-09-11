@@ -22,14 +22,3 @@ class TGBotDBMixin:
 
     async def close_db(self):
         await self.db_engine.dispose()
-
-    @on_callback_query(group=group_manager.CREATE_SESSION)
-    @on_message(group=group_manager.CREATE_SESSION)
-    async def create_session(self, update):
-        db.set_context_var_value(self.session())
-
-    @on_callback_query(group=group_manager.REMOVE_SESSION)
-    @on_message(group=group_manager.REMOVE_SESSION)
-    async def remove_session(self, update):
-        await db.close()
-        db.set_context_var_value(None)

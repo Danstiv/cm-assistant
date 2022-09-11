@@ -472,7 +472,6 @@ class TGBotGUIMixin:
             await window.handle_button_activation()
             await window.render()
             await callback_query.answer()
-            await db.commit()
         except PermissionError:
             await callback_query.answer('Извините, вы не можете активировать эту кнопку.', show_alert=True)
         except ReconstructionError:
@@ -480,12 +479,10 @@ class TGBotGUIMixin:
         except Exception:
             await callback_query.answer('Извините, что-то пошло не так.\nПожалуйста, попробуйте позже.', show_alert=True)
             self.log.exception(f'Необработанное исключение при обработке callback query:')
-        finally:
-            current_callback_query.reset_context_var()
-            callback_query.stop_propagation()
+        callback_query.continue_propagation()
 
     @on_callback_query(group=group_manager.RESET_CALLBACK_QUERY_CONTEXT)
-    def callback_query_reset_handler(self, callback_query):
+    async def callback_query_reset_handler(self, callback_query):
         current_callback_query.reset_context_var()
 
     @on_message(filters.text, group=group_manager.PROCESS_INPUT)
@@ -504,5 +501,4 @@ class TGBotGUIMixin:
         window = await window_class.reconstruct(self, message.chat.id, window.id, row=window)
         await window.process_input(message.text)
         await window.render()
-        await db.commit()
-        message.stop_propagation()
+        message.continue_propagation()

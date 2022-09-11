@@ -26,7 +26,6 @@ class TGBotUsersMixin:
         if not update.from_user:
             return
         db.add(current_user)
-        await db.commit()
         current_user.reset_context_var()
 
     async def get_or_create_user(self, user_id):

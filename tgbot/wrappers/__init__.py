@@ -1,5 +1,7 @@
 import pyrogram
 
+from tgbot.wrappers.dispatcher import Dispatcher
+
 
 class User(pyrogram.types.User):
 
@@ -24,3 +26,5 @@ class User(pyrogram.types.User):
 
 def apply_wrappers():
     pyrogram.types.user_and_chats.user.User = User
+    pyrogram.dispatcher.Dispatcher = Dispatcher
+    pyrogram.client.Dispatcher = Dispatcher

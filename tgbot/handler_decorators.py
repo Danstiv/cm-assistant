@@ -1,4 +1,4 @@
-from functools import wraps
+import inspect
 import sys
 
 import pyrogram
@@ -17,27 +17,16 @@ def clear_handlers():
 def make_handler_decorator(decorator_name):
     def handler_decorator(*handler_args, **handler_kwargs):
         def decorator(func):
-            handler_name = func.__name__
-            @wraps(func)
-            async def wrapper(self, client, *args):
-                try:
-                    return await func(self, *args)
-                except (pyrogram.ContinuePropagation, pyrogram.StopPropagation):
-                    raise
-                except Exception:
-                    self.log.exception(f'В обработчике {handler_name} произошло необработанное исключение:')
+            if not inspect.iscoroutinefunction(func):
+                raise ValueError(f'{func.__name__} handler is not a coroutine')
             handler_info = {
                 'decorator_name': decorator_name,
                 'handler_args': handler_args,
                 'handler_kwargs': handler_kwargs,
-                'handler_name': handler_name,
+                'handler_name': func.__name__,
             }
             handlers.append(handler_info)
-            if not getattr(func, 'wrapped', False):
-                wrapper.wrapped = True
-                return wrapper
-            else:
-                return func
+            return func
         return decorator
     return handler_decorator
 
