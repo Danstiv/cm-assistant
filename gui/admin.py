@@ -10,6 +10,8 @@ from tgbot.gui import (
 from tgbot.gui.buttons import CheckBoxButton, SimpleButton
 from tgbot.gui.keyboards import GridKeyboard
 from tgbot.users import current_user
+from gui.mixins import GroupSelectionTabMixin
+from gui.tabs import GroupTab
 import tables
 from tables import (
     Group,
@@ -19,25 +21,7 @@ from tables import (
 )
 
 
-class GroupTab(BaseTab):
-    table = tables.GroupTab
-
-    async def custom_switch_tab(self, *args, **kwargs):
-        kwargs['group_id'] = self.row.group_id
-        return await self.window.switch_tab(*args, **kwargs)
-
-    async def get_association_object(self):
-        stmt = select(GroupUserAssociation).where(
-            GroupUserAssociation.group_id == self.row.group_id,
-            GroupUserAssociation.user_id == current_user.id
-        )
-        return (await db.execute(stmt)).scalar()
-
-
-class GroupSelectionTab(BaseTab):
-
-    def get_keyboard(self):
-        return GridKeyboard(self, width=1)
+class GroupSelectionTab(GroupSelectionTabMixin):
 
     async def build(self, *args, **kwargs):
         await super().build(*args, **kwargs)
@@ -50,13 +34,7 @@ class GroupSelectionTab(BaseTab):
             self.text.set_body('Вы не являетесь админом или модератором ни в одной из групп, к которым я привязан.')
             return
         self.text.set_body('Выберите группу.')
-        for group in groups:
-            group_title = (await self.window.controller.app.get_chat(group.group_id)).title
-            self.keyboard.add_button(SimpleButton(
-                group_title,
-                arg=group.id,
-                callback=self.on_group_btn
-            ))
+        await self.set_groups(groups, callback=self.on_group_btn)
 
     async def on_group_btn(self, arg):
         await self.window.switch_tab(GroupAdminSettingsTab, group_id=arg)
