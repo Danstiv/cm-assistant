@@ -59,15 +59,21 @@ class BotController(
         exception_handler.wrap_methods(self)
         global_filter = self.get_global_filter()
         for handler in get_handlers():
-            decorator = getattr(self.app, handler['decorator_name'])
-            if global_filter and handler['decorator_name'] == 'on_message':
-                if not handler['handler_args']:
-                    handler['handler_args'] = [global_filter]
+            filters = None
+            if handler['handler_args']:
+                filters = handler['handler_args'][0]
+            if 'filters' in handler['handler_kwargs']:
+                filters = handler['handler_kwargs'].pop('filters')
+            if global_filter and isinstance(handler['handler'], pyrogram.handlers.MessageHandler):
+                if filters is None:
+                    filters = [global_filter]
                 else:
-                    handler['handler_args'][0] = global_filter & handler['handler_args'][0]
-            decorator = decorator(*handler['handler_args'], **handler['handler_kwargs'])
+                    filters = global_filter & filters
             method = getattr(self, handler['handler_name'])
-            decorator(method)
+            await self.app.dispatcher.add_handler(
+                handler['handler'](method, filters=filters),
+                **handler['handler_kwargs']
+            )
         await self.init_db()
 
     async def start(self):

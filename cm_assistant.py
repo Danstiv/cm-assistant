@@ -28,9 +28,10 @@ from tgbot.group_manager import group_manager
 from tgbot.handler_decorators import on_message
 from tgbot.helpers import ContextVarWrapper
 from tgbot.users import current_user
+from tgbot.enums import Category
 
 group_manager.add_left_group('load_group')
-group_manager.add_right_group('save_group')
+group_manager.add_right_group('reset_group_context')
 group_manager.add_left_group('start_in_group')
 
 current_group = ContextVarWrapper('current_group')
@@ -40,7 +41,7 @@ class Controller(BotController):
     def __init__(self):
         super().__init__(bot_name='cm_assistant', user_table=User)
 
-    @on_message(filters.group, group=group_manager.LOAD_GROUP)
+    @on_message(filters.group, category=Category.INITIALIZE, group=group_manager.LOAD_GROUP)
     async def load_group_handler(self, message):
         stmt = select(Group).where(
             Group.group_id == message.chat.id
@@ -50,11 +51,10 @@ class Controller(BotController):
             return
         current_group.set_context_var_value(group)
 
-    @on_message(filters.group, group=group_manager.SAVE_GROUP)
-    async def save_group_handler(self, message):
+    @on_message(filters.group, category=Category.FINALIZE, group=group_manager.RESET_GROUP_CONTEXT)
+    async def reset_group_context(self, message):
         if not current_group.is_set:
             return
-        db.add(current_group)
         current_group.reset_context_var()
 
     @on_message(filters.command('start') & filters.private)
@@ -157,7 +157,7 @@ class Controller(BotController):
             user.group_bind_code = None
             current_group.set_context_var_value(group)
             await self.send_message('Привязка выполнена, теперь вы можете использовать команду /admin для настройки.', user.user_id)
-            self.log.info(f'Бот ассоциирован с группой. Группа: {message.chat.id}, администратор: {user.user_id}')
+            self.log.info(f'Бот ассоциирован с группой. Группа: {message.chat.title}, администратор: {user.pyrogram_user.full_name}')
             return
         else:
             self.log.info('Группа уже привязана')

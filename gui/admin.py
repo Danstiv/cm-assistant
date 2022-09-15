@@ -2,11 +2,7 @@ import pyrogram
 from sqlalchemy import select
 
 from tgbot.db import db
-from tgbot.gui import (
-    BaseTab,
-    InputField,
-    Window
-)
+from tgbot.gui import InputField, Window
 from tgbot.gui.buttons import CheckBoxButton, SimpleButton
 from tgbot.gui.keyboards import GridKeyboard
 from tgbot.users import current_user

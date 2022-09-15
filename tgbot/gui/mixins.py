@@ -47,5 +47,5 @@ class ButtonMixin(BaseButtonMixin):
 class CheckBoxButtonMixin(ButtonMixin):
     text = Column(String)
     is_checked = Column(Boolean, nullable=False, default=False)
-    is_unchecked_prefix = Column(String, nullable=False, default='unchecked ')
-    is_checked_prefix = Column(String, nullable=False, default='checked ')
+    is_unchecked_prefix = Column(String, nullable=False, default='')
+    is_checked_prefix = Column(String, nullable=False, default='☑ ')

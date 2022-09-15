@@ -1,7 +1,6 @@
 import pyrogram
 
 from tgbot.db import tables
-
 from tgbot.gui.buttons.mixins import ButtonWithCallback
 
 

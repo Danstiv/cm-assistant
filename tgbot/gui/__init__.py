@@ -7,6 +7,7 @@ from sqlalchemy import delete, desc, or_, select
 
 from tgbot.constants import DEFAULT_USER_ID
 from tgbot.db import db, tables
+from tgbot.enums import Category
 from tgbot.group_manager import group_manager
 from tgbot.gui.exceptions import (
     GUIError,
@@ -282,7 +283,6 @@ class InputField:
 
 
 class BaseText:
-    table = tables.Text
 
     def __init__(self, tab):
         self.tab = tab
@@ -345,11 +345,11 @@ class BaseText:
 
 
 class Text(BaseText):
-    pass
+    table = tables.Text
+
 
 
 class BaseTab:
-    table = tables.Tab
     text_class = Text
     keyboard_class = SimpleKeyboard
     input_fields = []
@@ -450,12 +450,18 @@ class BaseTab:
         await self.text.destroy()
         await self.keyboard.destroy()
 
+class Tab(BaseTab):
+    table = tables.Tab
+
 
 class TGBotGUIMixin:
 
-    @on_callback_query(group=group_manager.SET_CALLBACK_QUERY_CONTEXT)
-    async def handle_callback_query(self, callback_query):
+    @on_callback_query(category=Category.INITIALIZE, group=group_manager.PROCESS_CALLBACK_QUERY)
+    async def set_callback_query_context(self, callback_query):
         current_callback_query.set_context_var_value(callback_query)
+
+    @on_callback_query(group=group_manager.PROCESS_CALLBACK_QUERY)
+    async def handle_callback_query(self, callback_query):
         if callback_query.data[:4] != CALLBACK_QUERY_SIGNATURE:
             callback_query.continue_propagation()
         try:
@@ -479,9 +485,9 @@ class TGBotGUIMixin:
         except Exception:
             await callback_query.answer('Извините, что-то пошло не так.\nПожалуйста, попробуйте позже.', show_alert=True)
             self.log.exception(f'Необработанное исключение при обработке callback query:')
-        callback_query.continue_propagation()
+        callback_query.stop_propagation()
 
-    @on_callback_query(group=group_manager.RESET_CALLBACK_QUERY_CONTEXT)
+    @on_callback_query(category=Category.FINALIZE, group=group_manager.RESET_CALLBACK_QUERY_CONTEXT)
     async def callback_query_reset_handler(self, callback_query):
         current_callback_query.reset_context_var()
 
@@ -501,4 +507,4 @@ class TGBotGUIMixin:
         window = await window_class.reconstruct(self, message.chat.id, window.id, row=window)
         await window.process_input(message.text)
         await window.render()
-        message.continue_propagation()
+        message.stop_propagation()

@@ -1,13 +1,13 @@
 from sqlalchemy import select
 
 from tgbot.db import db
-from tgbot.gui import BaseTab
+from tgbot.gui.tabs import Tab
 from tgbot.users import current_user
 import tables
 from tables import GroupUserAssociation
 
 
-class GroupTab(BaseTab):
+class GroupTab(Tab):
     table = tables.GroupTab
 
     async def custom_switch_tab(self, *args, **kwargs):

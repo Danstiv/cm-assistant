@@ -1,9 +1,9 @@
-from tgbot.gui import BaseTab
+from tgbot.gui.tabs import Tab
 from tgbot.gui.keyboards import GridKeyboard
 from tgbot.gui.buttons import SimpleButton
 
 
-class GroupSelectionTabMixin(BaseTab):
+class GroupSelectionTabMixin(Tab):
 
     def get_keyboard(self):
         return GridKeyboard(self, width=1)
