@@ -11,15 +11,14 @@ from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus
 from sqlalchemy import func, select
 
+from enums import EventType, UserRole
 from gui.admin import AdminWindow
 from gui.settings import SettingsWindow
 from tables import (
     Event,
-    EventType,
     Group,
     GroupUserAssociation,
     User,
-    UserRole,
 )
 import texts
 from tgbot import BotController
@@ -81,36 +80,6 @@ class Controller(BotController):
         window = AdminWindow(self, message.chat.id)
         await window.build()
         await window.render()
-
-    async def group_admin_settings_get_stats_handler(self, keyboard, button, column_index, row_index):
-        stmt = select(GroupUserAssociation).where(
-            GroupUserAssociation.group_id == button.arg,
-            GroupUserAssociation.user_id == current_user.id
-        )
-        association = (await db.execute(stmt)).scalar()
-        group = association.group
-        date = datetime.datetime.now()-datetime.timedelta(days=7)
-        start_timestamp = int(date.timestamp())
-        joins = 0
-        leaves = 0
-        messages = 0
-        for event in group.events:
-            if event.type == EventType.JOIN:
-                joins += 1
-            elif event.type == EventType.LEAVE:
-                leaves += 1
-            else:
-                messages += 1
-        text = (
-            f'Статистика с {date:%Y-%m-%d %H:%M:%S}\n'
-            f'Новых пользователей: {joins}\n'
-            f'Вышедших пользователей: {leaves}\n'
-            f'Написано сообщений: {messages}'
-        )
-        keyboard = await create_simple_keyboard(self, [[
-            {'name': 'Назад', 'callback': self.group_admin_settings_handler, 'kwargs': {'arg': group.id}}
-        ]])
-        await current_callback_query.message.edit_text(text, reply_markup=keyboard)
 
     @on_message(filters.command('start') & filters.group, group=group_manager.START_IN_GROUP)
     async def group_start_handler(self, message):

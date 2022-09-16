@@ -38,6 +38,7 @@ class TextMixin(TableWithWindowMixin):
 class BaseButtonMixin(TableWithWindowMixin):
     id = Column(Integer, primary_key=True)
     callback_data = Column(LargeBinary(64), unique=True, nullable=False)
+    name = Column(String)
 
 
 class ButtonMixin(BaseButtonMixin):

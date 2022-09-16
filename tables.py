@@ -1,22 +1,11 @@
-import enum
+import enums
 
-from sqlalchemy import Boolean, Column, Enum, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.ext.associationproxy import association_proxy
-from sqlalchemy.orm import backref, relationship
+from sqlalchemy.orm import backref, declarative_mixin, relationship
 
 from tgbot.db.tables import Base, User
 from tgbot.gui.mixins import ButtonMixin, TabMixin
-
-class UserRole(enum.Enum):
-    USER = 'user'
-    MODERATOR = 'moderator'
-    ADMIN = 'admin'
-
-
-class EventType(enum.Enum):
-    JOIN = 'join'
-    LEAVE = 'leave'
-    MESSAGE = 'message'
 
 
 class User(User):
@@ -39,7 +28,7 @@ class GroupUserAssociation(Base):
     __tablename__ = 'group_user_association'
     group_id = Column(ForeignKey('group.id'), primary_key=True)
     user_id = Column(ForeignKey('user.id'), primary_key=True)
-    role = Column(Enum(UserRole), nullable=False, default=UserRole.USER)
+    role = Column(Enum(enums.UserRole), nullable=False, default=enums.UserRole.USER)
     subscribed_to_mailings = Column(Boolean, nullable=False, default=False)
     group = relationship(Group, back_populates='user_associations', lazy='selectin')
     user = relationship(User, back_populates='group_associations', lazy='selectin')
@@ -52,7 +41,7 @@ class Event(Base):
     group = relationship('Group', backref=backref('events', lazy='selectin'))
     user_id = Column(Integer, nullable=False)
     time = Column(Integer, nullable=False)
-    type = Column(Enum(EventType), nullable=False)
+    type = Column(Enum(enums.EventType), nullable=False)
 
 
 class GroupTabMixin(TabMixin):
@@ -65,4 +54,19 @@ class GroupTab(GroupTabMixin, Base):
 
 class GroupAddStaffTab(GroupTabMixin, Base):
     __tablename__ = 'group_add_staff_tab'
-    staff_type = Column(Enum(UserRole), nullable=False)
+    staff_type = Column(Enum(enums.UserRole), nullable=False)
+
+
+@declarative_mixin
+class DateTimeRangeMixin:
+    start_date_time = Column(DateTime, nullable=False)
+    end_date_time = Column(DateTime, nullable=False)
+
+
+class GroupStatsDateTimeRangeSelectionTab(GroupTabMixin, DateTimeRangeMixin, Base):
+    __tablename__ = 'group_stats_date_time_range_selection_tab'
+    screen = Column(Enum(enums.GroupStatsDateTimeRangeSelectionScreen))
+
+
+class GroupStatsTab(GroupTabMixin, DateTimeRangeMixin, Base):
+    __tablename__ = 'group_stats_tab'

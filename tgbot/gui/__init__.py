@@ -151,6 +151,19 @@ class BaseKeyboard:
             self.add_row()
         self.buttons[-1].append(button)
 
+    async def remove_buttons_by_name(self, name):
+        buttons = self.buttons
+        self.buttons = []
+        for row in buttons:
+            new_row = []
+            for button in row:
+                if button.row.name != name:
+                    new_row.append(button)
+                    continue
+                await button.destroy()
+            if new_row:
+                self.buttons.append(new_row)
+
     async def render(self):
         keyboard = []
         for row in self.buttons:
@@ -478,14 +491,14 @@ class TGBotGUIMixin:
             await window.handle_button_activation()
             await window.render()
             await callback_query.answer()
+            callback_query.stop_propagation()
         except PermissionError:
             await callback_query.answer('Извините, вы не можете активировать эту кнопку.', show_alert=True)
         except ReconstructionError:
             await callback_query.answer('Извините, эта клавиатура устарела и больше не обслуживается. Пожалуйста, попробуйте воспользоваться клавиатурой из более позднего сообщения.', show_alert=True)
         except Exception:
             await callback_query.answer('Извините, что-то пошло не так.\nПожалуйста, попробуйте позже.', show_alert=True)
-            self.log.exception(f'Необработанное исключение при обработке callback query:')
-        callback_query.stop_propagation()
+            raise
 
     @on_callback_query(category=Category.FINALIZE, group=group_manager.RESET_CALLBACK_QUERY_CONTEXT)
     async def callback_query_reset_handler(self, callback_query):
