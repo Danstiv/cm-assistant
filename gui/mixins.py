@@ -22,6 +22,7 @@ class GroupSelectionTabMixin(Tab):
                 callback=callback
             ))
 
+
 class GroupTabMixin(Tab):
     async def custom_switch_tab(self, *args, **kwargs):
         kwargs['group_id'] = self.row.group_id

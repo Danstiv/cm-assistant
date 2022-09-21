@@ -123,6 +123,7 @@ class Controller(BotController):
             group = Group(group_id=message.chat.id)
             association = GroupUserAssociation(group=group, user=user, role=UserRole.ADMIN)
             db.add(group)
+            db.add(association)
             user.group_bind_code = None
             current_group.set_context_var_value(group)
             await self.send_message('Привязка выполнена, теперь вы можете использовать команду /admin для настройки.', user.user_id)
@@ -189,7 +190,6 @@ class Controller(BotController):
                 self.log.info('Сервисное сообщение удалено')
             except pyrogram.errors.Forbidden:
                 self.log.info('Не удалось удалить сервисное сообщение, вероятно, бот не является администратором в группе')
-                pass
 
     @on_message(filters.left_chat_member)
     async def leave_handler(self, message):
@@ -211,7 +211,6 @@ class Controller(BotController):
                 self.log.info('Сервисное сообщение удалено')
             except pyrogram.errors.Forbidden:
                 self.log.info('Не удалось удалить сервисное сообщение, вероятно, бот не является администратором в группе')
-                pass
 
     @on_message(filters.group & ~filters.service)
     async def group_message_handler(self, message):

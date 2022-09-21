@@ -305,6 +305,7 @@ class BaseText:
         self.row = self.table(
             *args,
             window_id=self.tab.window.row.id,
+            tab_index=self.tab.row.index_in_window,
             tab_id=self.tab.row.id,
             **kwargs
         )
@@ -341,6 +342,7 @@ class BaseText:
         # The initial text does not seem to be needed here, but let it be just in case
         stmt = select(self.table).where(
             self.table.window_id == self.tab.window.row.id,
+            self.table.tab_index == self.tab.row.index_in_window,
             self.table.tab_id == self.tab.row.id,
         )
         self.row = (await db.execute(stmt)).scalar()
