@@ -253,7 +253,10 @@ class GroupStaffToUserConfirmTab(GroupTab):
         # This tab is needed for a relatively simple action,
         # therefore, using GroupTab will be enough, and the user_id will be just passed to the button.
         await super().build(*args, **kwargs)
-        self.text.set_body(f'Понизить пользователя {user_id}?')
+        user = (await db.execute(
+            select(User).where(User.id == user_id))
+        ).scalar()
+        self.text.set_body(f'Понизить пользователя {(await self.window.controller.app.get_users(user.user_id)).full_name}?')
         self.keyboard.add_button(SimpleButton('Да', callback=self.on_btn, arg=user_id))
         self.keyboard.add_button(SimpleButton('Нет', callback=self.on_btn))
 
@@ -266,7 +269,6 @@ class GroupStaffToUserConfirmTab(GroupTab):
             )
             association = (await db.execute(stmt)).scalar()
             association.role = UserRole.USER
-            db.add(association)
             result = 'Пользователь понижен.'
         else:
             result = 'Действие отменено.'
@@ -278,7 +280,7 @@ class GroupAddStaffTab(GroupTabMixin):
     table = tables.GroupAddStaffTab
     input_fields = [InputField(
         'username',
-        text='Отправьте мне ник пользователя, которому хотите выдать роль "{role}".'
+        text='Отправьте ник пользователя, которому хотите выдать роль "{role}".'
     )]
 
     async def get_text_data(self):

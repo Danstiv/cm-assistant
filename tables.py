@@ -20,8 +20,6 @@ class Group(Base):
     group_id = Column(Integer, nullable=False)
     remove_joins = Column(Boolean, default=False)
     remove_leaves = Column(Boolean, default=False)
-    users = association_proxy('user_associations', 'user')
-    user_associations = relationship('GroupUserAssociation', back_populates='group', lazy='selectin')
 
 
 class GroupUserAssociation(Base):
@@ -30,7 +28,7 @@ class GroupUserAssociation(Base):
     user_id = Column(ForeignKey('user.id'), primary_key=True)
     role = Column(Enum(enums.UserRole), nullable=False, default=enums.UserRole.USER)
     subscribed_to_mailings = Column(Boolean, nullable=False, default=False)
-    group = relationship(Group, back_populates='user_associations', lazy='selectin')
+    group = relationship(Group, lazy='selectin')
     user = relationship(User, back_populates='group_associations', lazy='selectin')
 
 
@@ -38,7 +36,7 @@ class Event(Base):
     __tablename__ = 'event'
     id = Column(Integer, primary_key=True)
     group_id = Column(Integer, ForeignKey('group.id'))
-    group = relationship('Group', backref=backref('events', lazy='selectin'))
+    group = relationship('Group')
     user_id = Column(Integer, nullable=False)
     time = Column(Integer, nullable=False)
     type = Column(Enum(enums.EventType), nullable=False)
