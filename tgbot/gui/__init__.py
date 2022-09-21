@@ -7,6 +7,7 @@ from sqlalchemy import delete, desc, or_, select
 
 from tgbot.constants import DEFAULT_USER_ID
 from tgbot.db import db, tables
+from tgbot.enums import Category
 from tgbot.group_manager import group_manager
 from tgbot.gui.exceptions import (
     GUIError,
@@ -62,7 +63,6 @@ class Window(metaclass=WindowMeta):
         self.current_tab = self.tabs[0](self)
         self.row.current_tab_index = 0
         db.add(self.row)
-        await db.flush()
         await self.current_tab.build(*args, **kwargs)
 
     def schedule_swap(self):
@@ -111,7 +111,7 @@ class Window(metaclass=WindowMeta):
         window = cls(controller, row.chat_id, row.user_id)
         window.row = row
         window.current_tab = window.tabs[row.current_tab_index](window)
-        await window.current_tab.reconstruct(buttons)
+        await window.current_tab.reconstruct(message.text, buttons)
         return window
 
     async def handle_button_activation(self):
@@ -150,6 +150,19 @@ class BaseKeyboard:
         if not self.buttons:
             self.add_row()
         self.buttons[-1].append(button)
+
+    async def remove_buttons_by_name(self, name):
+        buttons = self.buttons
+        self.buttons = []
+        for row in buttons:
+            new_row = []
+            for button in row:
+                if button.row.name != name:
+                    new_row.append(button)
+                    continue
+                await button.destroy()
+            if new_row:
+                self.buttons.append(new_row)
 
     async def render(self):
         keyboard = []
@@ -221,11 +234,6 @@ class BaseKeyboard:
                 db_row.window_id = self.tab.window.row.id
                 db.add(db_row)
 
-    async def destroy(self):
-        for row in self.buttons:
-            for button in row:
-                await button.destroy()
-
     async def restore(self):
         stmt = select(tables.PyrogramButton).where(
             tables.PyrogramButton.window_id == self.tab.window.row.id,
@@ -240,6 +248,11 @@ class BaseKeyboard:
                 buttons.append([])
             await db.delete(db_button)
         await self.reconstruct(buttons)
+
+    async def destroy(self):
+        for row in self.buttons:
+            for button in row:
+                await button.destroy()
 
 
 class SimpleKeyboard(BaseKeyboard):
@@ -261,7 +274,7 @@ class BaseButton(metaclass=ButtonMeta):
     async def db_render(self):
         if self.row.id is None:
             self.row.callback_data = CALLBACK_QUERY_SIGNATURE + self.keyboard.tab.window.crc32 + self.keyboard.tab.window.row.id.to_bytes(4, 'big') + self.crc32 + uuid.uuid4().bytes
-            self.row.window_id = self.keyboard.tab.window.row.id
+            self.row.window = self.keyboard.tab.window.row
         db.add(self.row)
 
     async def render(self):
@@ -282,22 +295,87 @@ class InputField:
     # Validation probably will be implemented here later
 
 
+class BaseText:
+
+    def __init__(self, tab):
+        self.tab = tab
+        self.one_time_header = True
+
+    async def build(self, *args, **kwargs):
+        self.row = self.table(
+            *args,
+            window_id=self.tab.window.row.id,
+            tab_id=self.tab.row.id,
+            **kwargs
+        )
+        db.add(self.row)
+
+    def set_header(self, header, one_time=True):
+        self.row.header = header
+        self.one_time_header = one_time
+
+    def set_body(self, body):
+        self.row.body = body
+
+    def set_input_field_text(self, text):
+        self.row.input_field_text = text
+
+    async def render(self):
+        text = ''
+        if self.row.header:
+            text += f'{self.row.header}\n{"-"*60}\n'
+            if self.one_time_header:
+                self.row.header = None
+        body = []
+        if self.row.body:
+            body.append(self.row.body)
+        if self.row.input_field_text:
+            body.append(self.row.input_field_text)
+        body = '\n'.join(body)
+        if not body:
+            body = '.'
+        text += body
+        return text.format(**await self.tab.get_text_data())
+
+    async def reconstruct(self, text):
+        # The initial text does not seem to be needed here, but let it be just in case
+        stmt = select(self.table).where(
+            self.table.window_id == self.tab.window.row.id,
+            self.table.tab_id == self.tab.row.id,
+        )
+        self.row = (await db.execute(stmt)).scalar()
+        if not self.row:
+            raise ReconstructionError('Text not found')
+
+    async def save(self):
+        pass
+
+    async def restore(self):
+        await self.reconstruct(None)
+
+    async def destroy(self):
+        await db.delete(self.row)
+
+
+class Text(BaseText):
+    table = tables.Text
+
+
+
 class BaseTab:
-    table = tables.Tab
+    text_class = Text
     keyboard_class = SimpleKeyboard
     input_fields = []
+    rerender_text = True
 
     def __init__(self, window):
         self.window = window
+        self.message_text = None
+        self.text = self.get_text()
         self.keyboard = self.get_keyboard()
 
-    def set_text(self, text):
-        self.row.text = text
-
     def get_text(self):
-        if self.row.text:
-            return self.row.text
-        return '.'
+        return  self.text_class(self)
 
     async def get_text_data(self):
         return {}
@@ -310,16 +388,23 @@ class BaseTab:
         self.row.index_in_window = self.window.row.current_tab_index
         if self.input_fields:
             self.row.current_input_field_index = 0
-            if self.input_fields[self.row.current_input_field_index].text:
-                self.set_text(self.input_fields[self.row.current_input_field_index].text)
         db.add(self.row)
+        # In some places further window and tab identifiers will be needed.
+        # Therefore, we need to insert the previously created window and tab to the database.
+        await db.flush()
+        await self.text.build()
 
     async def render(self):
-        text = self.get_text().format(**await self.get_text_data())
+        if self.rerender_text or not self.message_text:
+            if self.input_fields and self.input_fields[self.row.current_input_field_index].text:
+                self.text.set_input_field_text(self.input_fields[self.row.current_input_field_index].text)
+            text = await self.text.render()
+        else:
+            text = self.message_text
         keyboard = await self.keyboard.render()
         return text, keyboard
 
-    async def reconstruct(self, buttons):
+    async def reconstruct(self, text, buttons):
         stmt = select(self.table).where(
             self.table.window_id == self.window.row.id,
             self.table.index_in_window == self.window.row.current_tab_index
@@ -327,6 +412,8 @@ class BaseTab:
         self.row = (await db.execute(stmt)).scalar()
         if not self.row:
             raise ReconstructionError('Tab not found')
+        self.message_text = text
+        await self.text.reconstruct(text)
         await self.keyboard.reconstruct(buttons)
 
     async def handle_button_activation(self):
@@ -337,12 +424,12 @@ class BaseTab:
         await callback(text)
 
     def switch_input_field(self, field_name=None, previous=False, next=True):
-        if name is not None:
+        if field_name is not None:
             for i, field in enumerate(self.input_fields):
-                if field.name == name:
+                if field.name == field_name:
                     self.row.current_input_field_index = i
                     return
-            raise NameError(f'Field "{name}" not found')
+            raise NameError(f'Field "{field_name}" not found')
         if previous == next:
             raise ValueError(f'Previous should not be equal to next')
         if previous:
@@ -355,11 +442,8 @@ class BaseTab:
             self.row.current_input_field_index += 1
 
     async def save(self):
+        await self.text.save()
         await self.keyboard.save()
-
-    async def destroy(self):
-        await db.delete(self.row)
-        await self.keyboard.destroy()
 
     async def restore(self):
         stmt = select(self.table).where(
@@ -370,15 +454,27 @@ class BaseTab:
         if not row:
             return False
         self.row = row
+        await self.text.restore()
         await self.keyboard.restore()
         return True
+
+    async def destroy(self):
+        await db.delete(self.row)
+        await self.text.destroy()
+        await self.keyboard.destroy()
+
+class Tab(BaseTab):
+    table = tables.Tab
 
 
 class TGBotGUIMixin:
 
-    @on_callback_query(group=group_manager.SET_CALLBACK_QUERY_CONTEXT)
-    async def handle_callback_query(self, callback_query):
+    @on_callback_query(category=Category.INITIALIZE, group=group_manager.PROCESS_CALLBACK_QUERY)
+    async def set_callback_query_context(self, callback_query):
         current_callback_query.set_context_var_value(callback_query)
+
+    @on_callback_query(group=group_manager.PROCESS_CALLBACK_QUERY)
+    async def handle_callback_query(self, callback_query):
         if callback_query.data[:4] != CALLBACK_QUERY_SIGNATURE:
             callback_query.continue_propagation()
         try:
@@ -395,20 +491,17 @@ class TGBotGUIMixin:
             await window.handle_button_activation()
             await window.render()
             await callback_query.answer()
-            await db.commit()
+            callback_query.stop_propagation()
         except PermissionError:
             await callback_query.answer('Извините, вы не можете активировать эту кнопку.', show_alert=True)
         except ReconstructionError:
             await callback_query.answer('Извините, эта клавиатура устарела и больше не обслуживается. Пожалуйста, попробуйте воспользоваться клавиатурой из более позднего сообщения.', show_alert=True)
         except Exception:
             await callback_query.answer('Извините, что-то пошло не так.\nПожалуйста, попробуйте позже.', show_alert=True)
-            self.log.exception(f'Необработанное исключение при обработке callback query:')
-        finally:
-            current_callback_query.reset_context_var()
-            callback_query.stop_propagation()
+            raise
 
-    @on_callback_query(group=group_manager.RESET_CALLBACK_QUERY_CONTEXT)
-    def callback_query_reset_handler(self, callback_query):
+    @on_callback_query(category=Category.FINALIZE, group=group_manager.RESET_CALLBACK_QUERY_CONTEXT)
+    async def callback_query_reset_handler(self, callback_query):
         current_callback_query.reset_context_var()
 
     @on_message(filters.text, group=group_manager.PROCESS_INPUT)
@@ -427,5 +520,4 @@ class TGBotGUIMixin:
         window = await window_class.reconstruct(self, message.chat.id, window.id, row=window)
         await window.process_input(message.text)
         await window.render()
-        await db.commit()
         message.stop_propagation()

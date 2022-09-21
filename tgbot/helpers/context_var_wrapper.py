@@ -5,6 +5,8 @@ class EmptyContextVarException(Exception):
     pass
 
 
+_EMPTY_PLACEHOLDER = type('EmptyPlaceholder', (), {})()
+
 WRAPPABLE_MAGIC_METHODS = [
     '__pos__', '__neg__', '__abs__',
     '__invert__', '__round__', '__floor__',
@@ -43,18 +45,22 @@ class ContextVarWrapperMetaClass(type):
 class ContextVarWrapper(metaclass=ContextVarWrapperMetaClass):
     def __init__(self, context_var_name):
         self.__dict__['context_var'] = contextvars.ContextVar(context_var_name)
+        self.set_context_var_value(_EMPTY_PLACEHOLDER)
 
     def set_context_var_value(self, *args, **kwargs):
-        self.__dict__['context_var_token'] = self.context_var.set(*args, **kwargs)
+        self.context_var.set(*args, **kwargs)
 
     def get_context_var_value(self, *args, **kwargs):
         try:
-            return self.context_var.get(*args, **kwargs)
+            value = self.context_var.get(*args, **kwargs)
+            if value is _EMPTY_PLACEHOLDER:
+                raise LookupError
+            return value
         except LookupError:
             raise EmptyContextVarException(f'Context var "{self.context_var.name}" is empty')
 
     def reset_context_var(self):
-        self.context_var.reset(self.context_var_token)
+        self.context_var.set(_EMPTY_PLACEHOLDER)
 
     @property
     def is_set(self):

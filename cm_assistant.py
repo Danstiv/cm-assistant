@@ -11,15 +11,15 @@ from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus
 from sqlalchemy import func, select
 
+from enums import EventType, UserRole
+from gui.admin import AdminWindow
+from gui.settings import SettingsWindow
 from tables import (
     Event,
-    EventType,
     Group,
     GroupUserAssociation,
     User,
-    UserRole,
 )
-from gui.admin import AdminWindow
 import texts
 from tgbot import BotController
 from tgbot.db import db
@@ -27,9 +27,10 @@ from tgbot.group_manager import group_manager
 from tgbot.handler_decorators import on_message
 from tgbot.helpers import ContextVarWrapper
 from tgbot.users import current_user
+from tgbot.enums import Category
 
 group_manager.add_left_group('load_group')
-group_manager.add_right_group('save_group')
+group_manager.add_right_group('reset_group_context')
 group_manager.add_left_group('start_in_group')
 
 current_group = ContextVarWrapper('current_group')
@@ -39,7 +40,7 @@ class Controller(BotController):
     def __init__(self):
         super().__init__(bot_name='cm_assistant', user_table=User)
 
-    @on_message(filters.group, group=group_manager.LOAD_GROUP)
+    @on_message(filters.group, category=Category.INITIALIZE, group=group_manager.LOAD_GROUP)
     async def load_group_handler(self, message):
         stmt = select(Group).where(
             Group.group_id == message.chat.id
@@ -49,12 +50,10 @@ class Controller(BotController):
             return
         current_group.set_context_var_value(group)
 
-    @on_message(filters.group, group=group_manager.SAVE_GROUP)
-    async def save_group_handler(self, message):
+    @on_message(filters.group, category=Category.FINALIZE, group=group_manager.RESET_GROUP_CONTEXT)
+    async def reset_group_context(self, message):
         if not current_group.is_set:
             return
-        db.add(current_group)
-        await db.commit()
         current_group.reset_context_var()
 
     @on_message(filters.command('start') & filters.private)
@@ -70,94 +69,17 @@ class Controller(BotController):
             reply_markup=pyrogram.types.InlineKeyboardMarkup([[bind_button]])
         )
 
-    async def get_settings_message_data(self):
-        if not current_user.groups:
-            return 'Вы не состоите ни в одной из групп, к которым я привязан.', None
-        keyboard = [[]]
-        for group in current_user.groups:
-            keyboard[0].append(
-                {'name': f'group {group.id}', 'kwargs': {'arg': group.id}}
-            )
-        keyboard = await create_simple_keyboard(self, keyboard, callback=self.group_settings_handler)
-        return 'Выберите группу.', keyboard
-
     @on_message(filters.command('settings') & filters.private)
     async def settings_handler(self, message):
-        text, keyboard = await self.get_settings_message_data()
-        await message.reply(text, reply_markup=keyboard)
-
-    async def group_settings_handler(self, keyboard, button, row_index, column_index):
-        stmt = select(GroupUserAssociation).where(
-            GroupUserAssociation.group_id == button.arg,
-            GroupUserAssociation.user_id == current_user.id
-        )
-        association = (await db.execute(stmt)).scalar()
-        keyboard = await create_simple_check_box_keyboard(
-            self,
-            [[
-                {'name': 'Подписаться на рассылки', 'kwargs': {'is_checked': association.subscribed_to_mailings, 'arg': 'subscribed_to_mailings'}}
-            ], [
-                {'name': 'Применить', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_settings_apply_handler.__name__, 'arg': association.group_id}},
-                {'name': 'Назад', 'button_class': SimpleButton, 'kwargs': {'callback_name': self.group_settings_back_handler.__name__}},
-            ]]
-        )
-        await current_callback_query.message.edit_text(f'Настройки группы {association.group_id}.', reply_markup=keyboard)
-
-    async def group_settings_apply_handler(self, keyboard, button, column_index, row_index):
-        stmt = select(GroupUserAssociation).where(
-            GroupUserAssociation.group_id == button.arg,
-            GroupUserAssociation.user_id == current_user.id
-        )
-        association = (await db.execute(stmt)).scalar()
-        for row in keyboard:
-            for button in row:
-                if not isinstance(button, SimpleCheckBoxButton):
-                    continue
-                setattr(association, button.arg, button.is_checked)
-        await db.commit()
-        text, keyboard = await self.get_settings_message_data()
-        await current_callback_query.message.edit_text('Настройки применены.\n' + text, reply_markup=keyboard)
-
-    async def group_settings_back_handler(self, *args, **kwargs):
-        text, keyboard = await self.get_settings_message_data()
-        await current_callback_query.message.edit_text(text, reply_markup=keyboard)
+        window = SettingsWindow(self, message.chat.id)
+        await window.build()
+        await window.render()
 
     @on_message(filters.command('admin') & filters.private)
     async def admin_handler(self, message):
         window = AdminWindow(self, message.chat.id)
         await window.build()
         await window.render()
-        await db.commit()
-
-    async def group_admin_settings_get_stats_handler(self, keyboard, button, column_index, row_index):
-        stmt = select(GroupUserAssociation).where(
-            GroupUserAssociation.group_id == button.arg,
-            GroupUserAssociation.user_id == current_user.id
-        )
-        association = (await db.execute(stmt)).scalar()
-        group = association.group
-        date = datetime.datetime.now()-datetime.timedelta(days=7)
-        start_timestamp = int(date.timestamp())
-        joins = 0
-        leaves = 0
-        messages = 0
-        for event in group.events:
-            if event.type == EventType.JOIN:
-                joins += 1
-            elif event.type == EventType.LEAVE:
-                leaves += 1
-            else:
-                messages += 1
-        text = (
-            f'Статистика с {date:%Y-%m-%d %H:%M:%S}\n'
-            f'Новых пользователей: {joins}\n'
-            f'Вышедших пользователей: {leaves}\n'
-            f'Написано сообщений: {messages}'
-        )
-        keyboard = await create_simple_keyboard(self, [[
-            {'name': 'Назад', 'callback': self.group_admin_settings_handler, 'kwargs': {'arg': group.id}}
-        ]])
-        await current_callback_query.message.edit_text(text, reply_markup=keyboard)
 
     @on_message(filters.command('start') & filters.group, group=group_manager.START_IN_GROUP)
     async def group_start_handler(self, message):
@@ -202,10 +124,9 @@ class Controller(BotController):
             association = GroupUserAssociation(group=group, user=user, role=UserRole.ADMIN)
             db.add(group)
             user.group_bind_code = None
-            await db.commit()
             current_group.set_context_var_value(group)
             await self.send_message('Привязка выполнена, теперь вы можете использовать команду /admin для настройки.', user.user_id)
-            self.log.info(f'Бот ассоциирован с группой. Группа: {message.chat.id}, администратор: {user.user_id}')
+            self.log.info(f'Бот ассоциирован с группой. Группа: {message.chat.title}, администратор: {user.pyrogram_user.full_name}')
             return
         else:
             self.log.info('Группа уже привязана')
@@ -241,7 +162,6 @@ class Controller(BotController):
                 return
             self.log.info('Задаётся роль админа для пользователя')
             association.role = UserRole.ADMIN
-            await db.commit()
             await self.send_message('Вам назначена роль админа. Используйте команду /admin для настройки.', user.user_id)
 
     @on_message(filters.new_chat_members)
@@ -261,7 +181,6 @@ class Controller(BotController):
             )
             events.append(event)
         db.add_all(events)
-        await db.commit()
         self.log.info(f'Добавлено {len(events)} участников')
         if current_group.remove_joins:
             self.log.info('Будет выполнена попытка удалить сервисное сообщение о добавлении участников')
@@ -285,7 +204,6 @@ class Controller(BotController):
             user_id=message.left_chat_member.id
         )
         db.add(event)
-        await db.commit()
         if current_group.remove_leaves:
             self.log.info('Будет выполнена попытка удалить сервисное сообщение о выходе участника')
             try:
@@ -305,7 +223,6 @@ class Controller(BotController):
             time=int(time.time()),
             type=EventType.MESSAGE
         ))
-        await db.commit()
         self.log.info('Зарегистрировано сообщение')
 
 

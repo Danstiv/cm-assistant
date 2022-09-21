@@ -1,43 +1,28 @@
+import datetime
+
 import pyrogram
 from sqlalchemy import select
 
 from tgbot.db import db
-from tgbot.gui import (
-    BaseTab,
-    InputField,
-    Window
-)
+from tgbot.gui import InputField, Window
 from tgbot.gui.buttons import CheckBoxButton, SimpleButton
 from tgbot.gui.keyboards import GridKeyboard
+from tgbot.gui.tabs.mixins import DateTimeSelectionTabMixin
 from tgbot.users import current_user
+from enums import GroupStatsDateTimeRangeSelectionScreen, UserRole
+from gui.mixins import GroupSelectionTabMixin, GroupTabMixin
+from gui.tabs import GroupTab
 import tables
 from tables import (
+    Event,
     Group,
     GroupUserAssociation,
     User,
-    UserRole,
 )
+import texts
 
 
-class GroupTab(BaseTab):
-    table = tables.GroupTab
-
-    async def custom_switch_tab(self, *args, **kwargs):
-        kwargs['group_id'] = self.row.group_id
-        return await self.window.switch_tab(*args, **kwargs)
-
-    async def get_association_object(self):
-        stmt = select(GroupUserAssociation).where(
-            GroupUserAssociation.group_id == self.row.group_id,
-            GroupUserAssociation.user_id == current_user.id
-        )
-        return (await db.execute(stmt)).scalar()
-
-
-class GroupSelectionTab(BaseTab):
-
-    def get_keyboard(self):
-        return GridKeyboard(self, width=2)
+class GroupSelectionTab(GroupSelectionTabMixin):
 
     async def build(self, *args, **kwargs):
         await super().build(*args, **kwargs)
@@ -47,22 +32,17 @@ class GroupSelectionTab(BaseTab):
                 continue
             groups.append(association.group)
         if not groups:
-            self.set_text('Вы не являетесь админом или модератором ни в одной из групп, к которым я привязан.')
+            self.text.set_body('Вы не являетесь админом или модератором ни в одной из групп, к которым я привязан.')
             return
-        self.set_text('Выберите группу.')
-        for group in groups:
-            group_title = (await self.window.controller.app.get_chat(group.group_id)).title
-            self.keyboard.add_button(SimpleButton(
-                group_title,
-                arg=group.id,
-                callback=self.on_group_btn
-            ))
+        self.text.set_body('Выберите группу.')
+        await self.set_groups(groups, callback=self.on_group_btn)
 
     async def on_group_btn(self, arg):
         await self.window.switch_tab(GroupAdminSettingsTab, group_id=arg)
 
 
 class GroupAdminSettingsTab(GroupTab):
+    rerender_text = False
 
     async def get_text_data(self):
         return {'group_name': (await self.window.controller.app.get_chat((await self.get_association_object()).group.group_id)).title}
@@ -70,7 +50,7 @@ class GroupAdminSettingsTab(GroupTab):
     async def build(self, *args, **kwargs):
         await super().build(*args, **kwargs)
         association = await self.get_association_object()
-        self.set_text('Настройки группы {group_name}')
+        self.text.set_body('Настройки группы {group_name}')
         self.keyboard.add_row()
         self.keyboard.add_button(CheckBoxButton(
             'Удалять джойны',
@@ -82,8 +62,12 @@ class GroupAdminSettingsTab(GroupTab):
             is_checked=association.group.remove_leaves,
             callback=self.on_remove_leaves_cb
         ))
+        self.keyboard.add_row(SimpleButton(
+            'Статистика',
+            callback=self.on_stats_btn
+        ))
         if association.role == UserRole.ADMIN:
-            self.keyboard.add_row(SimpleButton(
+            self.keyboard.add_button(SimpleButton(
                 'Админы и модераторы',
                 callback=self.on_staff_btn
             ))
@@ -104,6 +88,9 @@ class GroupAdminSettingsTab(GroupTab):
         group.remove_leaves = state
         db.add(group)
 
+    async def on_stats_btn(self, arg):
+        await self.custom_switch_tab(GroupStatsDateTimeRangeSelectionTab)
+
     async def on_staff_btn(self, arg):
         await self.custom_switch_tab(GroupStaffTab)
 
@@ -111,10 +98,114 @@ class GroupAdminSettingsTab(GroupTab):
         await self.window.switch_tab(GroupSelectionTab)
 
 
+class GroupStatsDateTimeRangeSelectionTab(DateTimeSelectionTabMixin, GroupTabMixin):
+    table = tables.GroupStatsDateTimeRangeSelectionTab
+
+    async def build(self, *args, **kwargs):
+        dt = datetime.datetime.now().replace(second=0, microsecond=0)
+        kwargs['start_date_time'] = dt
+        kwargs['end_date_time'] = dt
+        await super().build(*args, **kwargs)
+        self.keyboard.add_row(
+            SimpleButton('Назад', callback=self.on_back_btn),
+            SimpleButton('Далее', callback=self.on_next_btn),
+        )
+        await self.set_start_date_time_selection_data()
+
+    async def set_date_time(self, dt):
+        if self.row.screen == GroupStatsDateTimeRangeSelectionScreen.START_DATE_TIME:
+            self.row.start_date_time = dt
+        if self.row.screen == GroupStatsDateTimeRangeSelectionScreen.END_DATE_TIME:
+            self.row.end_date_time = dt
+
+    async def get_date_time(self):
+        if self.row.screen == GroupStatsDateTimeRangeSelectionScreen.START_DATE_TIME:
+            return self.row.start_date_time
+        if self.row.screen == GroupStatsDateTimeRangeSelectionScreen.END_DATE_TIME:
+            return self.row.end_date_time
+
+    async def set_start_date_time_selection_data(self):
+        self.text.set_body('Выберите дату, с которой хотите просмотреть статистику.\n{date_time}.')
+        self.row.screen = GroupStatsDateTimeRangeSelectionScreen.START_DATE_TIME
+
+    async def set_end_date_time_selection_data(self):
+        self.text.set_body('Выберите дату, по которую хотите просмотреть статистику.\n{date_time}.')
+        self.row.screen = GroupStatsDateTimeRangeSelectionScreen.END_DATE_TIME
+
+    async def on_back_btn(self, arg):
+        if self.row.screen == GroupStatsDateTimeRangeSelectionScreen.START_DATE_TIME:
+            await self.custom_switch_tab(GroupAdminSettingsTab)
+        if self.row.screen == GroupStatsDateTimeRangeSelectionScreen.END_DATE_TIME:
+            await self.set_start_date_time_selection_data()
+
+    async def on_next_btn(self, arg):
+        if self.row.screen == GroupStatsDateTimeRangeSelectionScreen.START_DATE_TIME:
+            await self.set_end_date_time_selection_data()
+        elif self.row.screen == GroupStatsDateTimeRangeSelectionScreen.END_DATE_TIME:
+            await self.custom_switch_tab(
+                GroupStatsTab,
+                start_date_time=self.row.start_date_time,
+                end_date_time=self.row.end_date_time,
+                save_current_tab=True
+            )
+
+
+class GroupStatsTab(GroupTabMixin):
+    table = tables.GroupStatsTab
+
+    async def build(self, *args, **kwargs):
+        await super().build(*args, **kwargs)
+        self.text.set_body(texts.STATS_TEXT)
+        self.keyboard.add_row(SimpleButton(
+            'Обновить',
+            callback=self.on_update_btn
+        ))
+        self.keyboard.add_row(SimpleButton(
+            'Назад',
+            callback=self.on_back_btn
+        ))
+
+    async def on_update_btn(self, arg):
+        update_time = datetime.datetime.now().strftime('%H:%M:%S')
+        self.text.set_header(f'Обновлено в {update_time}.')
+
+    async def on_back_btn(self, arg):
+        await self.custom_switch_tab(GroupStatsDateTimeRangeSelectionTab)
+
+    async def get_text_data(self):
+        group = (await self.get_association_object()).group
+        start_timestamp = self.row.start_date_time.timestamp()
+        end_timestamp = self.row.end_date_time.timestamp()
+        stmt = select(Event).where(
+            Event.time >= start_timestamp,
+            Event.time <= end_timestamp,
+            Event.group_id == group.id,
+        )
+        events = (await db.execute(stmt)).scalars()
+        joins = 0
+        leaves = 0
+        messages = 0
+        for event in events:
+            if event.type == EventType.JOIN:
+                joins += 1
+            elif event.type == EventType.LEAVE:
+                leaves += 1
+            else:
+                messages += 1
+        return {
+            'start_date_time': self.row.start_date_time,
+            'end_date_time': self.row.end_date_time,
+            'joins': joins,
+            'leaves': leaves,
+            'messages': messages,
+            'group_name': (await self.window.controller.app.get_chat((await self.get_association_object()).group.group_id)).title,
+        }
+
+
 class GroupStaffTab(GroupTab):
 
     def get_keyboard(self):
-        return GridKeyboard(self, width=3)
+        return GridKeyboard(self, width=2)
 
     async def build(self, *args, **kwargs):
         await super().build(*args, **kwargs)
@@ -132,14 +223,7 @@ class GroupStaffTab(GroupTab):
                 role = 'админ'
             data.append({'role': role, 'id': association.user_id, 'user_id': association.user.user_id})
         users = await self.window.controller.app.get_users([i['user_id'] for i in data])
-        usernames = []
-        for user in users:
-            username_components = [user.first_name]
-            if user.last_name:
-                username_components.append(user.last_name)
-            if user.username:
-                username_components.append('@' + user.username)
-            usernames.append(' '.join(username_components))
+        usernames = [u.full_name for u in users]
         for i, username in zip(data, usernames):
             self.keyboard.add_button(SimpleButton(
                 f'Сместить пользователя {username} ({i["role"]})',
@@ -150,7 +234,7 @@ class GroupStaffTab(GroupTab):
         self.keyboard.add_button(SimpleButton('Добавить админа', callback=self.on_add_staff_btn, arg='admin'))
         self.keyboard.add_button(SimpleButton('Добавить модератора', callback=self.on_add_staff_btn, arg='moderator'))
         self.keyboard.add_row(SimpleButton('Назад', callback=self.on_back_btn))
-        self.set_text('Выберите действие.')
+        self.text.set_body('Выберите действие.')
 
     async def on_staff_to_user_btn(self, arg):
         await self.custom_switch_tab(GroupStaffToUserConfirmTab, user_id=arg)
@@ -169,7 +253,7 @@ class GroupStaffToUserConfirmTab(GroupTab):
         # This tab is needed for a relatively simple action,
         # therefore, using GroupTab will be enough, and the user_id will be just passed to the button.
         await super().build(*args, **kwargs)
-        self.set_text(f'Понизить пользователя {user_id}?')
+        self.text.set_body(f'Понизить пользователя {user_id}?')
         self.keyboard.add_button(SimpleButton('Да', callback=self.on_btn, arg=user_id))
         self.keyboard.add_button(SimpleButton('Нет', callback=self.on_btn))
 
@@ -183,16 +267,18 @@ class GroupStaffToUserConfirmTab(GroupTab):
             association = (await db.execute(stmt)).scalar()
             association.role = UserRole.USER
             db.add(association)
-            result = 'Пользователь понижен.\n'
+            result = 'Пользователь понижен.'
+        else:
+            result = 'Действие отменено.'
         tab = await self.custom_switch_tab(GroupStaffTab)
-        tab.set_text(result + tab.get_text())
+        tab.text.set_header(result)
 
 
-class GroupAddStaffTab(GroupTab):
+class GroupAddStaffTab(GroupTabMixin):
     table = tables.GroupAddStaffTab
     input_fields = [InputField(
         'username',
-        text='Отправьте мне ник пользователя, которому хотите выдать роль {role}.'
+        text='Отправьте мне ник пользователя, которому хотите выдать роль "{role}".'
     )]
 
     async def get_text_data(self):
@@ -203,7 +289,8 @@ class GroupAddStaffTab(GroupTab):
         self.keyboard.add_button(SimpleButton('Назад', callback=self.on_back_btn))
 
     async def on_back_btn(self, arg):
-        await self.custom_switch_tab(GroupStaffTab)
+        tab = await self.custom_switch_tab(GroupStaffTab)
+        tab.text.set_header('Действие отменено.')
 
     async def process_username(self, username):
         try:
@@ -213,7 +300,7 @@ class GroupAddStaffTab(GroupTab):
             user = None
         self.window.schedule_swap()
         if not user:
-            self.set_text('Пользователь не найден.\n' + self.input_fields[0].text)
+            self.text.set_header('Пользователь не найден.')
             return
         user = await self.window.controller.get_or_create_user(user.id)
         association = None
@@ -235,13 +322,15 @@ class GroupAddStaffTab(GroupTab):
             association.role = self.row.staff_type
             result = 'Готово.'
         tab = await self.custom_switch_tab(GroupStaffTab)
-        tab.set_text(f'{result}\n{tab.get_text()}')
+        tab.text.set_header(result)
 
 
 class AdminWindow(Window):
     tabs = [
         GroupSelectionTab,
         GroupAdminSettingsTab,
+        GroupStatsDateTimeRangeSelectionTab,
+        GroupStatsTab,
         GroupStaffTab,
         GroupStaffToUserConfirmTab,
         GroupAddStaffTab,

@@ -27,9 +27,18 @@ class TabMixin(TableWithWindowMixin):
     current_input_field_index = Column(Integer)
 
 
+class TextMixin(TableWithWindowMixin):
+    id = Column(Integer, primary_key=True)
+    tab_id = Column(Integer)
+    header = Column(String)
+    body = Column(String)
+    input_field_text = Column(String)
+
+
 class BaseButtonMixin(TableWithWindowMixin):
     id = Column(Integer, primary_key=True)
     callback_data = Column(LargeBinary(64), unique=True, nullable=False)
+    name = Column(String)
 
 
 class ButtonMixin(BaseButtonMixin):
@@ -39,5 +48,5 @@ class ButtonMixin(BaseButtonMixin):
 class CheckBoxButtonMixin(ButtonMixin):
     text = Column(String)
     is_checked = Column(Boolean, nullable=False, default=False)
-    is_unchecked_prefix = Column(String, nullable=False, default='unchecked ')
-    is_checked_prefix = Column(String, nullable=False, default='checked ')
+    is_unchecked_prefix = Column(String, nullable=False, default='')
+    is_checked_prefix = Column(String, nullable=False, default='☑ ')
