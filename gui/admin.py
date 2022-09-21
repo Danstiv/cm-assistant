@@ -9,7 +9,7 @@ from tgbot.gui.buttons import CheckBoxButton, SimpleButton
 from tgbot.gui.keyboards import GridKeyboard
 from tgbot.gui.tabs.mixins import DateTimeSelectionTabMixin
 from tgbot.users import current_user
-from enums import GroupStatsDateTimeRangeSelectionScreen, UserRole
+from enums import EventType, GroupStatsDateTimeRangeSelectionScreen, UserRole
 from gui.mixins import GroupSelectionTabMixin, GroupTabMixin
 from gui.tabs import GroupTab
 import tables
