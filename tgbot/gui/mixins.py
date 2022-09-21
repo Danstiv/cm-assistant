@@ -29,6 +29,7 @@ class TabMixin(TableWithWindowMixin):
 
 class TextMixin(TableWithWindowMixin):
     id = Column(Integer, primary_key=True)
+    tab_index = Column(Integer)
     tab_id = Column(Integer)
     header = Column(String)
     body = Column(String)
