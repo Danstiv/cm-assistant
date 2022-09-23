@@ -5,7 +5,7 @@ import pyrogram
 from pyrogram import filters
 from sqlalchemy import delete, desc, or_, select
 
-from tgbot.constants import DEFAULT_USER_ID
+from tgbot.constants import ANONYMOUS_USER_ID, DEFAULT_USER_ID
 from tgbot.db import db, tables
 from tgbot.enums import Category
 from tgbot.group_manager import group_manager
@@ -97,7 +97,8 @@ class Window(metaclass=WindowMeta):
             row = (await db.execute(stmt)).scalar()
         if row is None:
             raise NoWindowError
-        if row.user_id != DEFAULT_USER_ID and row.user_id != current_user.user_id:
+        current_user_id = current_user.id if current_user.is_set else ANONYMOUS_USER_ID
+        if row.user_id != DEFAULT_USER_ID and row.user_id != current_user_id:
             raise PermissionError
         if message is None:
             message = await controller.app.get_messages(chat_id, row.message_id)
@@ -508,9 +509,10 @@ class TGBotGUIMixin:
 
     @on_message(filters.text, group=group_manager.PROCESS_INPUT)
     async def process_input(self, message):
+        current_user_id = current_user.id if current_user.is_set else ANONYMOUS_USER_ID
         stmt = select(tables.Window).where(
             tables.Window.chat_id == message.chat.id,
-            or_(tables.Window.user_id == DEFAULT_USER_ID, tables.Window.user_id == current_user.user_id),
+            or_(tables.Window.user_id == DEFAULT_USER_ID, tables.Window.user_id == current_user_id),
             tables.Window.input_required == True
         ).order_by(
             desc(tables.Window.id)

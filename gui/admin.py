@@ -226,7 +226,7 @@ class GroupStaffTab(GroupTab):
         usernames = [u.full_name for u in users]
         for i, username in zip(data, usernames):
             self.keyboard.add_button(SimpleButton(
-                f'Сместить пользователя {username} ({i["role"]})',
+                f'Сместить {username} ({i["role"]})',
                 callback=self.on_staff_to_user_btn,
                 arg=i['id']
             ))
