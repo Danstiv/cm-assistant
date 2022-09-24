@@ -57,11 +57,18 @@ class Window(metaclass=WindowMeta):
         self.user_id = user_id
         self.swap = False
 
-    async def build(self, *args, **kwargs):
+    def find_tab_index_by_class(self, tab):
+        try:
+            return self.tabs.index(tab)
+        except ValueError:
+            raise GUIError('Requested tab not found')
+
+    async def build(self, *args, tab=None, **kwargs):
         self.row = tables.Window(chat_id=self.chat_id, user_id=self.user_id)
         self.row.window_class_crc32 = self.crc32
-        self.current_tab = self.tabs[0](self)
-        self.row.current_tab_index = 0
+        tab_index = 0 if not tab else self.find_tab_index_by_class(tab)
+        self.current_tab = self.tabs[tab_index](self)
+        self.row.current_tab_index = tab_index
         db.add(self.row)
         await self.current_tab.build(*args, **kwargs)
 
@@ -122,10 +129,7 @@ class Window(metaclass=WindowMeta):
         await self.current_tab.process_input(text)
 
     async def switch_tab(self, new_tab, *args, save_current_tab=False, **kwargs):
-        try:
-            new_tab_index = self.tabs.index(new_tab)
-        except ValueError:
-            raise GUIError('Requested tab not found')
+        new_tab_index = self.find_tab_index_by_class(new_tab)
         if not save_current_tab:
             await self.current_tab.destroy()
         else:
