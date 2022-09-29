@@ -1,5 +1,8 @@
+import asyncio
+from functools import wraps
 import os
 
+import sqlalchemy
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -43,3 +46,33 @@ class TGBotDBMixin:
     @on_callback_query(category=Category.FINALIZE, group=group_manager.RESET_SESSION_CONTEXT)
     async def reset_session_context(self, update):
         db.reset_context_var()
+
+
+def with_db(wait_for_commit=False):
+    def decorator(method):
+        @wraps(method)
+        async def wrapper(self, *args, **kwargs):
+            if wait_for_commit:
+                result = True
+                event = asyncio.Event()
+                def after_rollback(session, previous_transaction):
+                    nonlocal result
+                    event.set()
+                    result = False
+                sqlalchemy.event.listen(db.sync_session, 'after_commit', lambda s: event.set())
+                sqlalchemy.event.listen(db.sync_session, 'after_soft_rollback', after_rollback)
+                await event.wait()
+                if not result:
+                    # Somewhere in another task something went wrong, we should not continue
+                    return
+                await db.close()
+            db.set_context_var_value(self.session())
+            success = False
+            try:
+                result = await method(self, *args, **kwargs)
+                success = True
+            finally:
+                await (db.commit() if success else db.rollback())
+            return result
+        return wrapper
+    return decorator

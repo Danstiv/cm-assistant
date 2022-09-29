@@ -72,6 +72,10 @@ class Window(metaclass=WindowMeta):
         db.add(self.row)
         await self.current_tab.build(*args, **kwargs)
 
+    def rebind(self):
+        db.add(self.row)
+        self.current_tab.rebind()
+
     def schedule_swap(self):
         self.swap = True
 
@@ -168,6 +172,9 @@ class BaseKeyboard:
                 await button.destroy()
             if new_row:
                 self.buttons.append(new_row)
+
+    def rebind(self):
+        [button.rebind() for row in self.buttons for button in row]
 
     async def render(self):
         keyboard = []
@@ -276,6 +283,9 @@ class BaseButton(metaclass=ButtonMeta):
     async def handle_button_activation(self, row_index, column_index):
         raise NotImplementedError
 
+    def rebind(self):
+        db.add(self.row)
+
     async def db_render(self):
         if self.row.id is None:
             self.row.callback_data = CALLBACK_QUERY_SIGNATURE + self.keyboard.tab.window.crc32 + self.keyboard.tab.window.row.id.to_bytes(4, 'big') + self.crc32 + uuid.uuid4().bytes
@@ -314,6 +324,9 @@ class BaseText:
             tab_id=self.tab.row.id,
             **kwargs
         )
+        db.add(self.row)
+
+    def rebind(self):
         db.add(self.row)
 
     def set_header(self, header, one_time=True):
@@ -400,6 +413,11 @@ class BaseTab:
         # Therefore, we need to insert the previously created window and tab to the database.
         await db.flush()
         await self.text.build()
+
+    def rebind(self):
+        db.add(self.row)
+        self.text.rebind()
+        self.keyboard.rebind()
 
     async def render(self):
         if self.rerender_text or not self.message_text:
