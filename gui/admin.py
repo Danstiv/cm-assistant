@@ -1,4 +1,5 @@
 import datetime
+import re
 
 import pyrogram
 from sqlalchemy import select
@@ -280,8 +281,12 @@ class GroupAddStaffTab(GroupTabMixin):
     table = tables.GroupAddStaffTab
     input_fields = [InputField(
         'username',
-        text='Отправьте ник пользователя, которому хотите выдать роль "{role}".'
+        text='Отправьте ник или ссылку на профиль пользователя, которому хотите выдать роль "{role}".'
     )]
+    username_regexes = [
+        re.compile(r'^https?\://t\.me/([a-zA-Z0-9_]+?)/?$'),
+        re.compile(r'^https?\://([a-zA-Z0-9_]+?)\.t\.me/?$'),
+    ]
 
     async def get_text_data(self):
         return {'role': 'админ' if self.row.staff_type == UserRole.ADMIN else 'модератор'}
@@ -295,6 +300,10 @@ class GroupAddStaffTab(GroupTabMixin):
         tab.text.set_header('Действие отменено.')
 
     async def process_username(self, username):
+        for regex in self.username_regexes:
+            if match := regex.match(username):
+                username = match[1]
+                break
         try:
             user_list = await self.window.controller.app.get_users([username])
             user = user_list[0] if user_list else None
