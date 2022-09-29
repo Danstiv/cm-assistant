@@ -86,7 +86,10 @@ class Window(metaclass=WindowMeta):
         else:
             self.row.input_required = False
         if self.swap and self.row.message_id:
-            await self.controller.app.delete_messages(self.row.chat_id, self.row.message_id)
+            try:
+                await self.controller.app.delete_messages(self.row.chat_id, self.row.message_id)
+            except pyrogram.errors.MessageDeleteForbidden:
+                pass
             self.row.message_id = None
         if not self.row.message_id:
             message = await self.controller.send_message(text, self.row.chat_id, reply_markup=keyboard, blocking=True)
@@ -117,6 +120,8 @@ class Window(metaclass=WindowMeta):
             if message.empty:
                 await db.delete(row)
                 raise NoWindowError('Message not found')
+        if message.id != row.message_id:
+            raise NoWindowError('Message id does not match the id in the database')
         buttons = []
         if isinstance(message.reply_markup, pyrogram.types.InlineKeyboardMarkup):
             buttons = message.reply_markup.inline_keyboard
