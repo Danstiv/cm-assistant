@@ -33,8 +33,9 @@ class TGBotUsersMixin:
         )
         user = (await db.execute(stmt)).scalar()
         if not user:
-            user = self.User(user_id=user_id, group_associations=[])
+            user = self.User(user_id=user_id)
             db.add(user)
             await db.commit()
+            await db.refresh(user)  # To avoid some strange errors when accessing attributes
             self.log.info(f'Создан пользователь {user_id}')
         return user

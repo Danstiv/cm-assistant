@@ -127,7 +127,8 @@ class Controller(BotController):
             user.group_bind_code = None
             current_group.set_context_var_value(group)
             await self.send_message('Привязка выполнена, теперь вы можете использовать команду /admin для настройки.', user.user_id)
-            self.log.info(f'Бот ассоциирован с группой. Группа: {message.chat.title}, администратор: {user.pyrogram_user.full_name}')
+            username = user.pyrogram_user.full_name if hasattr(user, 'pyrogram_user') else 'анонимный пользователь'
+            self.log.info(f'Бот ассоциирован с группой. Группа: {message.chat.title}, администратор: {username}')
             return
         else:
             self.log.info('Группа уже привязана')

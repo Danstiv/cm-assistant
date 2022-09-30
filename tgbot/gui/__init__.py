@@ -57,13 +57,24 @@ class Window(metaclass=WindowMeta):
         self.user_id = user_id
         self.swap = False
 
-    async def build(self, *args, **kwargs):
+    def find_tab_index_by_class(self, tab):
+        try:
+            return self.tabs.index(tab)
+        except ValueError:
+            raise GUIError('Requested tab not found')
+
+    async def build(self, *args, tab=None, **kwargs):
         self.row = tables.Window(chat_id=self.chat_id, user_id=self.user_id)
         self.row.window_class_crc32 = self.crc32
-        self.current_tab = self.tabs[0](self)
-        self.row.current_tab_index = 0
+        tab_index = 0 if not tab else self.find_tab_index_by_class(tab)
+        self.current_tab = self.tabs[tab_index](self)
+        self.row.current_tab_index = tab_index
         db.add(self.row)
         await self.current_tab.build(*args, **kwargs)
+
+    def rebind(self):
+        db.add(self.row)
+        self.current_tab.rebind()
 
     def schedule_swap(self):
         self.swap = True
@@ -75,7 +86,10 @@ class Window(metaclass=WindowMeta):
         else:
             self.row.input_required = False
         if self.swap and self.row.message_id:
-            await self.controller.app.delete_messages(self.row.chat_id, self.row.message_id)
+            try:
+                await self.controller.app.delete_messages(self.row.chat_id, self.row.message_id)
+            except pyrogram.errors.MessageDeleteForbidden:
+                pass
             self.row.message_id = None
         if not self.row.message_id:
             message = await self.controller.send_message(text, self.row.chat_id, reply_markup=keyboard, blocking=True)
@@ -106,6 +120,8 @@ class Window(metaclass=WindowMeta):
             if message.empty:
                 await db.delete(row)
                 raise NoWindowError('Message not found')
+        if message.id != row.message_id:
+            raise NoWindowError('Message id does not match the id in the database')
         buttons = []
         if isinstance(message.reply_markup, pyrogram.types.InlineKeyboardMarkup):
             buttons = message.reply_markup.inline_keyboard
@@ -122,10 +138,7 @@ class Window(metaclass=WindowMeta):
         await self.current_tab.process_input(text)
 
     async def switch_tab(self, new_tab, *args, save_current_tab=False, **kwargs):
-        try:
-            new_tab_index = self.tabs.index(new_tab)
-        except ValueError:
-            raise GUIError('Requested tab not found')
+        new_tab_index = self.find_tab_index_by_class(new_tab)
         if not save_current_tab:
             await self.current_tab.destroy()
         else:
@@ -164,6 +177,9 @@ class BaseKeyboard:
                 await button.destroy()
             if new_row:
                 self.buttons.append(new_row)
+
+    def rebind(self):
+        [button.rebind() for row in self.buttons for button in row]
 
     async def render(self):
         keyboard = []
@@ -272,6 +288,9 @@ class BaseButton(metaclass=ButtonMeta):
     async def handle_button_activation(self, row_index, column_index):
         raise NotImplementedError
 
+    def rebind(self):
+        db.add(self.row)
+
     async def db_render(self):
         if self.row.id is None:
             self.row.callback_data = CALLBACK_QUERY_SIGNATURE + self.keyboard.tab.window.crc32 + self.keyboard.tab.window.row.id.to_bytes(4, 'big') + self.crc32 + uuid.uuid4().bytes
@@ -310,6 +329,9 @@ class BaseText:
             tab_id=self.tab.row.id,
             **kwargs
         )
+        db.add(self.row)
+
+    def rebind(self):
         db.add(self.row)
 
     def set_header(self, header, one_time=True):
@@ -396,6 +418,11 @@ class BaseTab:
         # Therefore, we need to insert the previously created window and tab to the database.
         await db.flush()
         await self.text.build()
+
+    def rebind(self):
+        db.add(self.row)
+        self.text.rebind()
+        self.keyboard.rebind()
 
     async def render(self):
         if self.rerender_text or not self.message_text:
