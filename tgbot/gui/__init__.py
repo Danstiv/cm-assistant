@@ -521,7 +521,6 @@ class TGBotGUIMixin:
             await window.handle_button_activation()
             await window.render()
             await callback_query.answer()
-            callback_query.stop_propagation()
         except PermissionError:
             await callback_query.answer('Извините, вы не можете активировать эту кнопку.', show_alert=True)
         except ReconstructionError:
@@ -529,6 +528,7 @@ class TGBotGUIMixin:
         except Exception:
             await callback_query.answer('Извините, что-то пошло не так.\nПожалуйста, попробуйте позже.', show_alert=True)
             raise
+        callback_query.stop_propagation()
 
     @on_callback_query(category=Category.FINALIZE, group=group_manager.RESET_CALLBACK_QUERY_CONTEXT)
     async def callback_query_reset_handler(self, callback_query):
