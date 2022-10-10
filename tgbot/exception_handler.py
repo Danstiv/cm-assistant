@@ -87,6 +87,8 @@ def make_invoke_decorator(controller):
                 limiters = data['limiters']
                 previous_invoke_event = data['previous_invoke_event']
                 current_invoke_event = data['current_invoke_event']
+            if 'retries' not in kwargs:
+                kwargs['retries'] = 0
             limiters = limiters or []
             log_func = controller.log.info if ignore_errors else controller.log.error
             attempt = 0
@@ -103,7 +105,12 @@ def make_invoke_decorator(controller):
                 except pyrogram.errors.FloodWait as e:
                     exception = e
                     timeout = e.value
-                except pyrogram.errors.InternalServerError as e:
+                except (
+                    OSError,
+                    TimeoutError,
+                    pyrogram.errors.InternalServerError,
+                    pyrogram.errors.ServiceUnavailable
+                ) as e:
                     exception = e
                     timeout = attempt**4
                 msg = f'Ошибка при работе с telegram: {exception}'
