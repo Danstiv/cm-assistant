@@ -1,5 +1,5 @@
 alembic==1.8.0
 python-dotenv==0.20.0
-pyrogram==2.0.30
+pyrogram==2.0.62
 sqlalchemy==1.4.37
 tgcrypto==1.2.3

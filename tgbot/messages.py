@@ -39,7 +39,7 @@ class TGBotMessagesMixin:
             if get_peer_type(chat_id) == 'user':
                 limiter = Limiter(self, 3, 1, name=f'user_{chat_id}', static=False)
             else:
-                limiter = Limiter(self, 20, 60, name=f'chat_{chat_id}', static=False)
+                limiter = Limiter(self, 5, 15, name=f'chat_{chat_id}', static=False)
             self.message_limiters[chat_id] = limiter
         else:
             limiter = self.message_limiters[chat_id]
@@ -50,7 +50,7 @@ class TGBotMessagesMixin:
         else:
             event_chain = self.message_event_chains[event_chain_key]
         info = self.messages_info[priority]
-        texts = self.get_message_texts(text, title=kwargs.get('title', ''))
+        texts = self.get_message_texts(text, title=kwargs.pop('title', ''))
         self.log.debug(f'Постановка {len(texts)} частей сообщения в очередь с приоритетом {priority} ({"блокирующая" if blocking else "неблокирующая"} отправка, текущий id {self.message_id})')
         for i, text in enumerate(texts):
             event_chain['current_invoke_event'] = asyncio.Event()

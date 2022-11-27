@@ -111,7 +111,18 @@ class Window(metaclass=WindowMeta):
             row = (await db.execute(stmt)).scalar()
         if row is None:
             raise NoWindowError
-        current_user_id = current_user.id if current_user.is_set else ANONYMOUS_USER_ID
+        # If we process a callback query, we will always have the current user.
+        current_user_id = current_user.user_id if current_user.is_set else ANONYMOUS_USER_ID
+        if row.user_id == ANONYMOUS_USER_ID and current_callback_query.is_set:
+            # Now we know that the current user id definitely contains the id of some user.
+            try:
+                info = await controller.app.get_chat_member(chat_id, current_user_id)
+                if info.privileges.is_anonymous:
+                    # It's actually anonymous.
+                    current_user_id = ANONYMOUS_USER_ID
+            except pyrogram.errors.exceptions.bad_request_400.UserNotParticipant:
+                # Raising this exception implicitly makes it clear that the user is anonymous.
+                current_user_id = ANONYMOUS_USER_ID
         if row.user_id != DEFAULT_USER_ID and row.user_id != current_user_id:
             raise PermissionError
         if message is None:
@@ -158,11 +169,13 @@ class BaseKeyboard:
         self.buttons = []
 
     def add_row(self, *buttons):
+        if not buttons:
+            return
         self.buttons.append(list(buttons))
 
     def add_button(self, button):
         if not self.buttons:
-            self.add_row()
+            self.buttons.append([])
         self.buttons[-1].append(button)
 
     async def remove_buttons_by_name(self, name):
@@ -177,6 +190,9 @@ class BaseKeyboard:
                 await button.destroy()
             if new_row:
                 self.buttons.append(new_row)
+
+    def clear(self):
+        self.buttons = []
 
     def rebind(self):
         [button.rebind() for row in self.buttons for button in row]
@@ -340,6 +356,12 @@ class BaseText:
 
     def set_body(self, body):
         self.row.body = body
+
+    def prepend_to_body(self, text):
+        self.row.body = text + self.row.body
+
+    def append_to_body(self, text):
+        self.row.body = self.row.body + text
 
     def set_input_field_text(self, text):
         self.row.input_field_text = text

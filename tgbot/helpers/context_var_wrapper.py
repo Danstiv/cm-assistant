@@ -1,10 +1,5 @@
 import contextvars
 
-
-class EmptyContextVarException(Exception):
-    pass
-
-
 _EMPTY_PLACEHOLDER = type('EmptyPlaceholder', (), {})()
 
 WRAPPABLE_MAGIC_METHODS = [
@@ -29,6 +24,18 @@ WRAPPABLE_MAGIC_METHODS = [
 ]
 
 
+class ContextVarWrapperException(Exception):
+    pass
+
+
+class EmptyContextVarException(ContextVarWrapperException):
+    pass
+
+
+class AccessToContextVarValueRestrictedError(ContextVarWrapperException):
+    pass
+
+
 class ContextVarWrapperMetaClass(type):
 
     def __new__(cls, name, bases, dct):
@@ -43,18 +50,23 @@ class ContextVarWrapperMetaClass(type):
 
 
 class ContextVarWrapper(metaclass=ContextVarWrapperMetaClass):
+
     def __init__(self, context_var_name):
         self.__dict__['context_var'] = contextvars.ContextVar(context_var_name)
         self.set_context_var_value(_EMPTY_PLACEHOLDER)
 
-    def set_context_var_value(self, *args, **kwargs):
-        self.context_var.set(*args, **kwargs)
+    def set_context_var_value(self, value):
+        if hasattr(value, 'access_to_context_var_value_restricted'):
+            del value.access_to_context_var_value_restricted
+        self.context_var.set(value)
 
-    def get_context_var_value(self, *args, **kwargs):
+    def get_context_var_value(self, ignore_restrictions=False):
         try:
-            value = self.context_var.get(*args, **kwargs)
+            value = self.context_var.get()
             if value is _EMPTY_PLACEHOLDER:
                 raise LookupError
+            if not ignore_restrictions and getattr(value, 'access_to_context_var_value_restricted', False):
+                raise AccessToContextVarValueRestrictedError(f'Access to the value of the context var "{self.context_var.name}" is restricted')
             return value
         except LookupError:
             raise EmptyContextVarException(f'Context var "{self.context_var.name}" is empty')
@@ -67,8 +79,20 @@ class ContextVarWrapper(metaclass=ContextVarWrapperMetaClass):
         try:
             self.get_context_var_value()
             return True
+        except AccessToContextVarValueRestrictedError:
+            return True
         except EmptyContextVarException:
             return False
+
+    def restrict_access_to_context_var_value(self):
+        try:
+            value = self.get_context_var_value()
+        except AccessToContextVarValueRestrictedError:
+            raise AccessToContextVarValueRestrictedError(f'Access to the value of the context var "{self.context_var.name}" is already restricted')
+        try:
+            value.access_to_context_var_value_restricted = True
+        except AttributeError:
+            raise ContextVarWrapperException('This value cannot be restricted')
 
     def __getattr__(self, name):
         return getattr(self.get_context_var_value(), name)

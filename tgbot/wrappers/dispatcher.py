@@ -1,16 +1,12 @@
+import asyncio
 from collections import OrderedDict
-import enum
 import inspect
 
 import pyrogram
+from pyrogram.raw.types import UpdateNewMessage, UpdateNewChannelMessage, UpdateBotCallbackQuery
+from pyrogram.utils import get_peer_id
 
-
-class Category(enum.IntEnum):
-    INITIALIZE = enum.auto()
-    MAIN = enum.auto()
-    RESTORE = enum.auto()
-    FINISH = enum.auto()
-    FINALIZE = enum.auto()
+from tgbot.enums import Category
 
 
 class Dispatcher(pyrogram.dispatcher.Dispatcher):
@@ -18,18 +14,20 @@ class Dispatcher(pyrogram.dispatcher.Dispatcher):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.categories = {c: OrderedDict() for c in Category}
+        self.chat_locks = {}
 
     async def add_handler(self, handler, category=Category.MAIN, group=0):
         if category not in self.categories:
             raise ValueError(f'Category {category} does not exist')
-        category = self.categories[category]
         for lock in self.locks_list:
             await lock.acquire()
         try:
-            if group not in category:
-                category[group] = []
-            category[group].append(handler)
-            category = OrderedDict(sorted(category.items()))
+            if group not in self.categories[category]:
+                self.categories[category][group] = []
+            self.categories[category][group].append(handler)
+            self.categories[category] = OrderedDict(
+                sorted(self.categories[category].items())
+            )
         finally:
             for lock in self.locks_list:
                 lock.release()
@@ -65,20 +63,25 @@ class Dispatcher(pyrogram.dispatcher.Dispatcher):
         for group in self.categories[category].values():
             for handler in group:
                 args = None
+                kwargs = None
                 if isinstance(handler, handler_type):
+                    parsed_update.args_for_handler = []
+                    parsed_update.kwargs_for_handler = {}
                     try:
                         if await handler.check(self.client, parsed_update):
-                            args = (parsed_update,)
+                            args = (parsed_update, *parsed_update.args_for_handler)
+                            kwargs = {**parsed_update.kwargs_for_handler}
                     except Exception:
                         log.exception(f'Необработанное исключение при проверке обработчика {self.get_handler_name(handler)}:')
                         return False
                 elif isinstance(handler, pyrogram.handlers.RawUpdateHandler):
                     args = packet
+                    kwargs = {}
                 if args is None:
                     continue
                 try:
                     log.debug(f'Вызывается обработчик {self.get_handler_name(handler)}')
-                    await handler.callback(*args)
+                    await handler.callback(*args, **kwargs)
                 except pyrogram.StopPropagation:
                     return True
                 except pyrogram.ContinuePropagation:
@@ -94,8 +97,22 @@ class Dispatcher(pyrogram.dispatcher.Dispatcher):
             packet = await self.updates_queue.get()
             if packet is None:
                 break
+            update, users, chats = packet
+            chat_lock = None
+            if self.client.controller.worker_per_chat:
+                peer = None
+                if isinstance(update, (UpdateNewMessage, UpdateNewChannelMessage)):
+                    peer = update.message.peer_id
+                if isinstance(update, UpdateBotCallbackQuery):
+                    peer = update.peer
+                if peer is not None:
+                    peer_id = get_peer_id(peer)
+                    if peer_id not in self.chat_locks:
+                        self.chat_locks[peer_id] = asyncio.Lock()
+                    chat_lock = self.chat_locks[peer_id]
+            if chat_lock is not None:
+                await chat_lock.acquire()
             try:
-                update, users, chats = packet
                 parser = self.update_parsers.get(type(update), None)
                 parsed_update, handler_type = (
                     await parser(update, users, chats)
@@ -118,3 +135,6 @@ class Dispatcher(pyrogram.dispatcher.Dispatcher):
                     await self.handle_category(Category.FINALIZE, **kwargs)
             except Exception:
                 self.client.controller.log.exception('Необработанное исключение при обработке обновления:')
+            finally:
+                if chat_lock is not None:
+                    chat_lock.release()

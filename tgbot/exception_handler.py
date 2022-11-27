@@ -32,7 +32,7 @@ WRAPPABLE_METHODS = [
     'get_chat_photos', 'get_chat_photos_count', 'get_common_chats',
     'get_contacts', 'get_contacts_count', 'get_dialogs', 'get_dialogs_count',
     'get_discussion_message', 'get_discussion_replies',
-    'get_discussion_replies_count', 'get_file', 'get_game_high_scores',
+    'get_discussion_replies_count', 'get_game_high_scores',
     'get_inline_bot_results', 'get_me', 'get_media_group', 'get_messages',
     'get_nearby_chats', 'get_password_hint', 'get_send_as_chats', 'get_users',
     'import_contacts', 'join_chat', 'leave_chat', 'log_out',
@@ -103,7 +103,7 @@ def make_invoke_decorator(controller):
                         current_invoke_event.set()
                     return result
                 except pyrogram.errors.FloodWait as e:
-                    exception = e
+                    exception = repr(e)
                     timeout = e.value
                 except (
                     OSError,
@@ -111,7 +111,7 @@ def make_invoke_decorator(controller):
                     pyrogram.errors.InternalServerError,
                     pyrogram.errors.ServiceUnavailable
                 ) as e:
-                    exception = e
+                    exception = repr(e)
                     timeout = attempt**4
                 msg = f'Ошибка при работе с telegram: {exception}'
                 if attempt >= max_attempts:

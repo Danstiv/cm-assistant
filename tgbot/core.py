@@ -61,13 +61,15 @@ class TGBotCoreMixin:
         self.log.addHandler(warning_error_handler)
         super().__init__()
 
-    def add_task(self, callable, *args, name=None, **kwargs):
+    def add_task(self, callable, *args, name=None, cancellable=True, **kwargs):
         name = name or callable.__name__
         task = asyncio.create_task(callable(*args, **kwargs), name=name)
+        task.cancellable = cancellable
         self.async_tasks.append(task)
         if self.monitor_task:
             self.monitor_task.cancel()
         self.log.debug(f'Добавлена асинхронная задача {name}')
+        return task
 
     async def monitor_tasks(self):
         while True:
