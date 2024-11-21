@@ -212,7 +212,7 @@ class Controller(BotController):
             try:
                 await message.delete()
                 self.log.info('Сервисное сообщение удалено')
-            except pyrogram.errors.Forbidden:
+            except (pyrogram.errors.Forbidden, pyrogram.errors.ChannelPrivate):
                 self.log.info('Не удалось удалить сервисное сообщение, вероятно, бот не является администратором в группе')
 
     @on_message(filters.group & ~filters.service)
