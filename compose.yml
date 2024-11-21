@@ -6,6 +6,8 @@ services:
       - ./.env
     volumes:
       - data:/app/data
+    stop_signal: SIGINT
+
 volumes:
   data:
     driver: local
