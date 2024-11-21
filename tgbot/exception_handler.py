@@ -34,7 +34,7 @@ WRAPPABLE_METHODS = [
     'get_discussion_message', 'get_discussion_replies',
     'get_discussion_replies_count', 'get_game_high_scores',
     'get_inline_bot_results', 'get_me', 'get_media_group', 'get_messages',
-    'get_nearby_chats', 'get_password_hint', 'get_send_as_chats', 'get_users',
+    'get_password_hint', 'get_send_as_chats', 'get_users',
     'import_contacts', 'join_chat', 'leave_chat', 'log_out',
     'mark_chat_unread', 'pin_chat_message', 'promote_chat_member',
     'read_chat_history', 'recover_password', 'remove_cloud_password',
