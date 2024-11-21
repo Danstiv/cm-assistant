@@ -63,7 +63,9 @@ class Controller(BotController):
     @on_message(filters.command('bind') & filters.private)
     async def bind_handler(self, message):
         current_user.group_bind_code = ''.join(random.choices(string.ascii_lowercase + string.ascii_uppercase + string.digits, k=42))
-        bind_button = pyrogram.types.InlineKeyboardButton('Привязать', url=f'https://t.me/{self.app.me.username}?startgroup={current_user.group_bind_code}')
+        # startgroup and admin parameters are not working together!
+        # Tested for android client on 2024.11.21.
+        bind_button = pyrogram.types.InlineKeyboardButton('Привязать', url=f'tg://resolve?domain={self.app.me.username}&startgroup={current_user.group_bind_code}')
         await message.reply(
             texts.BIND_TEXT,
             reply_markup=pyrogram.types.InlineKeyboardMarkup([[bind_button]])
