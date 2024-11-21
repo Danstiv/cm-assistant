@@ -6,6 +6,7 @@ from tgbot.gui.keyboards import GridKeyboard
 from tgbot.gui.buttons import SimpleButton
 from tgbot.users import current_user
 from tables import GroupUserAssociation
+from pyrogram.errors import ChannelInvalid
 
 
 class GroupSelectionTabMixin(Tab):
@@ -15,7 +16,10 @@ class GroupSelectionTabMixin(Tab):
 
     async def set_groups(self, groups, callback):
         for group in groups:
-            group_title = (await self.window.controller.app.get_chat(group.group_id)).title
+            try:
+                group_title = (await self.window.controller.app.get_chat(group.group_id)).title
+            except ChannelInvalid:  # Group does not exists
+                continue
             self.keyboard.add_button(SimpleButton(
                 group_title,
                 arg=group.id,
