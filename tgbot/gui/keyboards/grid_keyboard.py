@@ -9,5 +9,5 @@ class GridKeyboard(BaseKeyboard):
 
     def add_button(self, button):
         if not self.buttons or len(self.buttons[-1]) == self.width:
-            self.add_row()
+            self.buttons.append([])
         self.buttons[-1].append(button)
