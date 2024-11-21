@@ -1,2 +1,6 @@
--r tgbot/requirements.txt
 aiosqlite==0.17.0
+alembic==1.14.0
+https://github.com/KurimuzonAkuma/pyrogram/archive/v2.1.32.zip
+python-dotenv==1.0.1
+sqlalchemy~=1.0
+tgcrypto==1.2.5
