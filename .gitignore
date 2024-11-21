@@ -128,5 +128,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# cm-assistent files
+# Other project ignores
 telegram_account.session
+telegram_account.session-journal
+log.log.*
