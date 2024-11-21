@@ -2,13 +2,14 @@ import asyncio
 import os
 import signal
 import sys
-
+from pathlib import Path
 import dotenv
 try:
     import pymorphy2
 except ImportError:
     pymorphy2 = None
 import pyrogram
+from pyrogram.storage import FileStorage
 try:
     import uvloop
 except ImportError:
@@ -111,6 +112,7 @@ class BotController(
             api_id=self.api_id,
             api_hash=self.api_hash,
             bot_token=self.bot_token,
+            storage_engine=FileStorage('telegram_account', Path('./data')),
             workdir='.',
             sleep_threshold=0,
             parse_mode=pyrogram.enums.ParseMode.HTML,

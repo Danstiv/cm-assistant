@@ -34,7 +34,7 @@ class TGBotCoreMixin:
         console_handler.setFormatter(logging.Formatter('%(message)s'))
         self.log.addHandler(console_handler)
         file_handler = logging.handlers.RotatingFileHandler(
-            'log.log',
+            'data/log.log',
             encoding='utf-8',
             maxBytes=LOG_MAX_SIZE,
             backupCount=LOG_MAX_BACKUPS
@@ -47,7 +47,7 @@ class TGBotCoreMixin:
         file_handler.setFormatter(detailed_formatter)
         self.log.addHandler(file_handler)
         file_error_handler = logging.handlers.RotatingFileHandler(
-            'error.log',
+            'data/error.log',
             encoding='utf-8',
             maxBytes=LOG_MAX_SIZE,
             backupCount=LOG_MAX_BACKUPS,
